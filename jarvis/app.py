@@ -216,21 +216,40 @@ def main():
     api._window = window
 
     ready = threading.Event()
-    pending: list[str] = []
-    plock = threading.Lock()
+    import queue
+
+    events: queue.Queue = queue.Queue()
+    last_level = {"v": None}
 
     def push(event):
-        # Не шлём уровень микрофона в фоне — лишняя нагрузка
-        data = json.dumps(event, ensure_ascii=False)
-        if not ready.is_set():
-            if event.get("type") in ("chat", "speak", "log"):
-                with plock:
-                    pending.append(data)
-            return
-        try:
-            window.evaluate_js(f"window.jarvisEvent && window.jarvisEvent({data})")
-        except Exception:
-            pass
+        # Уровень микрофона приходит 10 раз в секунду — храним только последний
+        if event.get("type") == "level":
+            last_level["v"] = event
+            events.put(None)
+        else:
+            events.put(event)
+
+    def sender():
+        """Одна очередь: события приходят в окно по порядку и не теряются."""
+        backlog = []
+        while True:
+            item = events.get()
+            if item is None:
+                item, last_level["v"] = last_level["v"], None
+                if item is None:
+                    continue
+            if not ready.is_set():
+                if item.get("type") != "level":
+                    backlog.append(item)
+                continue
+            for ev in backlog + [item]:
+                try:
+                    window.evaluate_js(f"window.jarvisEvent && window.jarvisEvent({json.dumps(ev, ensure_ascii=False)})")
+                except Exception:
+                    pass
+            backlog = []
+
+    threading.Thread(target=sender, daemon=True).start()
 
     core.listeners.append(push)
 
@@ -238,10 +257,7 @@ def main():
 
     def on_loaded():
         ready.set()
-        with plock:
-            for data in pending:
-                window.evaluate_js(f"window.jarvisEvent && window.jarvisEvent({data})")
-            pending.clear()
+        events.put({"type": "state", "state": "idle"})
 
     def on_closing():
         if core.settings["minimize_to_tray"] and tray["icon"] is not None:

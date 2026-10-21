@@ -32,6 +32,7 @@ class Core:
         self.cmd_q: queue.Queue = queue.Queue()
         self.speech_lock = threading.Lock()
         self.history: list[dict] = []  # для интерфейса
+        self.current_command = ""  # последняя фраза пользователя (для защиты звука)
         threading.Thread(target=self._worker, daemon=True).start()
 
     # ---------- события для интерфейса ----------
@@ -61,17 +62,17 @@ class Core:
         if not text:
             return
         self.chat("jarvis", text)
+        self.emit({"type": "state", "state": "voicing"})
         cfg = self.settings["tts"]
         with self.speech_lock:
             try:
-                audio = tts.synthesize(text, cfg)
-                if not audio:
-                    return
-                x, sr = tts.decode(audio)
+                x, sr = tts.speak_audio(text, cfg, log=lambda m: self.log(m, "error"))
                 if cfg.get("fx", True):
                     x = tts.jarvis_fx(x, sr)
             except Exception as e:
                 self.log(f"Голос недоступен: {e}", "error")
+                self.emit({"type": "toast", "text": "🔇 Голос недоступен — подробности в «Журнале»"})
+                self.speech_done()
                 return
             secs = len(x) / sr
             self.listener.mute_for(secs + 0.7)  # чтобы Джарвис не слышал сам себя
@@ -136,6 +137,7 @@ class Core:
                 self.emit({"type": "state", "state": "idle"})
 
     def handle_command(self, command: str):
+        self.current_command = command
         norm = normalize(command)
         # 1. Ждём подтверждения?
         if self.pending:

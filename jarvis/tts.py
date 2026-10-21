@@ -37,8 +37,40 @@ def synthesize(text: str, cfg: dict) -> bytes:
             json={"text": text, "model_id": "eleven_flash_v2_5"}, timeout=30)
         r.raise_for_status()
         return r.content
-    return asyncio.run(_edge(text, cfg.get("voice", "ru-RU-DmitryNeural"),
-                             cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")))
+    voice, rate, pitch = cfg.get("voice", "ru-RU-DmitryNeural"), cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")
+    return asyncio.run(asyncio.wait_for(_edge(text, voice, rate, pitch), timeout=12))
+
+
+def windows_voice(text: str) -> bytes:
+    """Запасной голос — встроенный в Windows (работает без интернета). Возвращает WAV."""
+    import os
+    import subprocess
+    import tempfile
+
+    path = os.path.join(tempfile.gettempdir(), "jarvis_voice.wav")
+    safe = text.replace("'", "''")
+    script = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+              "$v = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'ru*' } | Select-Object -First 1; "
+              "if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; "
+              f"$s.SetOutputToWaveFile('{path}'); $s.Speak('{safe}'); $s.Dispose()")
+    subprocess.run(["powershell", "-NoProfile", "-Command", script], timeout=30, check=True,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def speak_audio(text: str, cfg: dict, log=print):
+    """Готовит звук фразы. Если основной голос не отвечает — пробует ещё раз, потом голос Windows."""
+    errors = []
+    for attempt in range(2):
+        try:
+            audio = synthesize(text, cfg)
+            if audio:
+                return decode(audio)
+        except Exception as e:
+            errors.append(f"{type(e).__name__}: {e}")
+    log("Основной голос не ответил (" + "; ".join(errors)[:300] + ") — говорю голосом Windows")
+    return decode(windows_voice(clean_for_speech(text)))
 
 
 def decode(mp3: bytes):

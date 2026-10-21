@@ -13,6 +13,7 @@ const STATES = {
   hearing: ["СЛЫШУ ВАС", ""],
   recognizing: ["РАСПОЗНАЮ", ""],
   thinking: ["АНАЛИЗИРУЮ", "Нейросеть обрабатывает запрос"],
+  voicing: ["ОТВЕЧАЮ", "Готовлю голос…"],
   speaking: ["ОТВЕЧАЮ", ""],
   off: ["МИКРОФОН ВЫКЛЮЧЕН", "Включите «Слушать» слева или пишите текстом"],
 };
@@ -52,9 +53,14 @@ window.jarvisEvent = (e) => {
   }
 };
 
+let stateTimer;
 function setState(s) {
   if (s === "idle" && S && !S.settings.listening) s = "off";
   state = s;
+  // Защита от зависания: «думаю/распознаю/готовлю голос» не дольше 40 секунд
+  clearTimeout(stateTimer);
+  if (["thinking", "recognizing", "voicing", "hearing", "listening"].includes(s))
+    stateTimer = setTimeout(() => setState("idle"), s === "thinking" ? 40000 : 20000);
   const [label, hint] = STATES[s] || STATES.idle;
   $("#state-label").textContent = label;
   if (hint || s !== "speaking") $("#state-hint").textContent = hint;

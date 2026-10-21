@@ -42,14 +42,24 @@ core.on_heard("просто разговор на фоне")
 assert events[-1].get("c") != "просто разговор на фоне"
 print("слово-активатор: ок")
 
+# Джарвис не может сам выключить звук
+core.current_command = "расскажи анекдот"
+assert core.tools.call("mute", {"state": True}).startswith("Отказано")
+assert core.tools.call("set_volume", {"level": 0}).startswith("Отказано")
+assert core.tools.call("change_volume", {"delta": -50}).startswith("Отказано")
+print("защита звука: ок")
+
 assert len(core.tools.specs) > 20
 print("инструменты:", len(core.tools.specs))
 print(core.tools.call("get_time", {}))
 
 if "--no-net" not in sys.argv:
-    audio = tts.synthesize("Добрый вечер, сэр.", core.settings["tts"])
-    x, sr = tts.decode(audio)
+    x, sr = tts.speak_audio("Добрый вечер, сэр.", core.settings["tts"])
     x = tts.jarvis_fx(x, sr)
     assert len(x) / sr > 0.5
     print(f"голос: ок ({len(x) / sr:.1f} с)")
+if sys.platform == "win32":
+    x, sr = tts.decode(tts.windows_voice("Good evening, sir."))
+    assert len(x) / sr > 0.5
+    print("запасной голос Windows: ок")
 print("ВСЁ ОК")

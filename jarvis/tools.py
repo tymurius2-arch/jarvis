@@ -1,5 +1,6 @@
 """Инструменты, которыми нейросеть управляет компьютером."""
 import json
+import re
 import threading
 import traceback
 from pathlib import Path
@@ -143,14 +144,34 @@ class Toolbox:
         return system.youtube(query, play)
 
     # ---- Звук ----
+    SOUND_WORDS = re.compile(r"звук|громк|тише|громче|тихо|потиш|погромч|заглуш|беззвуч|без звука|mute|volume|"
+                             r"sound|louder|quieter|гучн|тихіше|голосн", re.I)
+
+    def _sound_allowed(self) -> bool:
+        """Менять звук можно только если пользователь сам об этом попросил —
+        иначе Джарвис может случайно заглушить собственный голос."""
+        return bool(self.SOUND_WORDS.search(self.core.current_command or ""))
+
+    DENY_SOUND = ("Отказано: громкость и звук меняются только по прямой просьбе пользователя. "
+                  "Не трогай звук и просто ответь.")
+
     def t_set_volume(self, level):
+        if not self._sound_allowed():
+            return self.DENY_SOUND
+        level = int(level)
+        if level < 5 and not re.search(r"\b0\b|ноль|нул|выключ|mute|без звука", self.core.current_command or "", re.I):
+            level = 5  # чтобы голос Джарвиса не пропал совсем
         return f"Громкость {system.set_volume(level)}%"
 
     def t_change_volume(self, delta):
+        if not self._sound_allowed():
+            return self.DENY_SOUND
         v = system.change_volume(delta)
         return f"Громкость {v}%" if v >= 0 else "Громкость изменена"
 
     def t_mute(self, state=None):
+        if not self._sound_allowed():
+            return self.DENY_SOUND
         return "Звук выключен" if system.mute(state) else "Звук включён"
 
     def t_media_control(self, action):
