@@ -37,3 +37,17 @@ for cfg_name, cfg in (("обычно", base), ("без высоты", plain)):
             print(f"OK   один запрос [{cfg_name}] «{txt}»: {n}")
         except Exception as e:
             print(f"FAIL один запрос [{cfg_name}] «{txt}»: {type(e).__name__}")
+
+import asyncio  # noqa: E402
+
+for v in ("ru-RU-DmitryNeural", "ru-RU-SvetlanaNeural", "en-US-AndrewMultilingualNeural",
+          "en-US-BrianMultilingualNeural", "de-DE-FlorianMultilingualNeural", "uk-UA-OstapNeural",
+          "en-US-EmmaMultilingualNeural"):
+    ok = 0
+    for txt in ("Проверка номер 3, сэр.", "Проверка номер 5, сэр.", "Громкость 50 процентов.", "Запускаю, сэр."):
+        try:
+            if asyncio.run(tts._edge(txt, v, "+0%", "+0Hz")):
+                ok += 1
+        except Exception:
+            pass
+    print(f"VOICE {v}: {ok}/4")
