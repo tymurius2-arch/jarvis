@@ -96,6 +96,13 @@ $("#listen-toggle").onchange = async (e) => {
 // ---------- диалог ----------
 function addMsg(m) {
   const d = document.createElement("div");
+  if (m.role === "sys") {
+    d.className = "msg sys";
+    d.textContent = m.text;
+    $("#chat").appendChild(d);
+    $("#chat").scrollTop = 1e9;
+    return;
+  }
   d.className = "msg " + (m.role === "user" ? "user" : "jarvis");
   d.innerHTML = `<small>${m.role === "user" ? "ВЫ" : "ДЖАРВИС"} · ${m.time || ""}</small>`;
   d.appendChild(document.createTextNode(m.text));

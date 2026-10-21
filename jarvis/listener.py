@@ -161,7 +161,7 @@ class Listener:
                     voiced = []
                     preroll = []
                     dur = len(pcm) / 2 / RATE
-                    if dur >= 0.45:
+                    if dur >= 0.6:
                         try:
                             self.utter_q.put_nowait(pcm)
                         except queue.Full:
@@ -202,6 +202,8 @@ class Listener:
                 if provider == "groq":
                     raise
                 self.core.log(f"Whisper недоступен ({e}), пробую Google", "error")
+                if "429" in str(e):
+                    self.core.notice("⏳ Лимит распознавания Groq на минуту — слушаю через Google", every=120)
         return self._google(pcm, lang)
 
     def _groq(self, pcm, key, lang) -> str:

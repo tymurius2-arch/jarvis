@@ -50,12 +50,12 @@ class Brain:
             if cfg["provider"] == "anthropic":
                 import anthropic
 
-                self._client = anthropic.Anthropic(api_key=cfg["api_key"], max_retries=2, timeout=60)
+                self._client = anthropic.Anthropic(api_key=cfg["api_key"], max_retries=1, timeout=30)
             else:
                 from openai import OpenAI
 
                 base = cfg.get("base_url") or PROVIDERS.get(cfg["provider"], {}).get("base_url")
-                self._client = OpenAI(api_key=cfg.get("api_key") or "ollama", base_url=base, max_retries=2, timeout=60)
+                self._client = OpenAI(api_key=cfg.get("api_key") or "ollama", base_url=base, max_retries=0, timeout=30)
             self._client_sig = sig
             self.history = []
         return self._client
@@ -85,10 +85,7 @@ class Brain:
         if "gpt-oss" in model and self.cfg["provider"] in ("groq", "openrouter"):
             extra["reasoning_effort"] = "low"
         for _ in range(8):
-            resp = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "system", "content": self._system()}] + self.history,
-                tools=tools, tool_choice="auto", temperature=0.6, max_tokens=1024, **extra)
+            resp = self._complete(client, model, tools, extra)
             msg = resp.choices[0].message
             calls = msg.tool_calls or []
             entry = {"role": "assistant", "content": msg.content or ""}
@@ -103,6 +100,29 @@ class Brain:
                 result = self.core.tools.call(c.function.name, c.function.arguments)
                 self.history.append({"role": "tool", "tool_call_id": c.id, "content": result[:1500]})
         return "Готово, " + self.core.settings["user_title"] + "."
+
+    def _complete(self, client, model, tools, extra):
+        """Запрос к нейросети. Если у модели кончился бесплатный лимит — сразу берём запасную модель
+        (у каждой модели Groq свой лимит), вместо того чтобы молча ждать."""
+        from .config import PROVIDERS
+
+        candidates = [model] + [m for m in PROVIDERS.get(self.cfg["provider"], {}).get("models", []) if m != model]
+        last = None
+        for i, m in enumerate(candidates):
+            kw = dict(extra) if "gpt-oss" in m else {}
+            try:
+                resp = client.chat.completions.create(
+                    model=m, messages=[{"role": "system", "content": self._system()}] + self.history,
+                    tools=tools, tool_choice="auto", temperature=0.6, max_tokens=1024, **kw)
+                if i:
+                    self.core.notice(f"⏳ Лимит модели {model} — отвечаю через {m}", every=60)
+                return resp
+            except Exception as e:
+                text = str(e)
+                if not ("429" in text or "rate limit" in text.lower() or "413" in text or "model_decommissioned" in text):
+                    raise
+                last = e
+        raise last
 
     # ---------- Claude ----------
     def _ask_anthropic(self, client, text):

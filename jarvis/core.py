@@ -32,7 +32,8 @@ class Core:
         self.cmd_q: queue.Queue = queue.Queue()
         self.speech_lock = threading.Lock()
         self.history: list[dict] = []  # для интерфейса
-        self.current_command = ""  # последняя фраза пользователя (для защиты звука)
+        self.current_command = ""
+        self._notices: dict = {}  # последняя фраза пользователя (для защиты звука)
         threading.Thread(target=self._worker, daemon=True).start()
 
     # ---------- события для интерфейса ----------
@@ -56,6 +57,14 @@ class Core:
         self.history = self.history[-200:]
         self.emit({"type": "chat", **item})
 
+    def notice(self, text: str, every: float = 0):
+        """Служебное сообщение прямо в чате (лимиты, ошибки), не чаще чем раз в every секунд."""
+        now = time.time()
+        if every and now - self._notices.get(text[:40], 0) < every:
+            return
+        self._notices[text[:40]] = now
+        self.chat("sys", text)
+
     # ---------- голос ----------
     def say(self, text: str, wait: bool = True):
         text = (text or "").strip()
@@ -64,7 +73,10 @@ class Core:
         self.chat("jarvis", text)
         self.emit({"type": "state", "state": "voicing"})
         cfg = self.settings["tts"]
-        log = lambda m: self.log(m, "error")  # noqa: E731
+        def log(m):
+            self.log(m, "error")
+            if "голосом Windows" in m:
+                self.notice("🔈 Голос Microsoft временно не отвечает — говорю запасным голосом Windows", every=300)
         with self.speech_lock:
             chunks = tts.split_sentences(text)
             ready: queue.Queue = queue.Queue()
@@ -129,7 +141,9 @@ class Core:
         self.chat("user", text)
         if wake and not command:
             self.active_until = time.time() + self.settings["follow_up_seconds"]
-            self.say(random.choice(ACK).format(t=self.settings["user_title"]))
+            # Отвечаем в отдельном потоке: микрофон продолжает слушать
+            threading.Thread(target=self.say, args=(random.choice(ACK).format(t=self.settings["user_title"]),),
+                             daemon=True).start()
             return
         self.cmd_q.put(command)
 
@@ -191,10 +205,17 @@ class Core:
             self.brain.reset()
             msg = str(e)
             self.log(f"Нейросеть: {msg}", "error")
+            self.notice("⚠ Нейросеть: " + msg[:160])
             if "401" in msg or "invalid" in msg.lower() and "key" in msg.lower():
                 self.say("Ключ нейросети не подходит, сэр. Проверьте его в настройках.")
-            elif "429" in msg:
-                self.say("Нейросеть просит передышку — слишком много запросов. Попробуйте через минуту.")
+            elif "429" in msg or "rate limit" in msg.lower():
+                m = re.search(r"try again in ([\d.]+)(m?s)", msg)
+                wait = ""
+                if m:
+                    secs = float(m.group(1)) / (1000 if m.group(2) == "ms" else 1)
+                    wait = f" Подождите {max(1, round(secs))} секунд."
+                self.notice("⏳ Бесплатный лимит Groq исчерпан на минуту." + wait)
+                self.say("Нейросеть просит передышку, сэр." + wait)
             elif not self._offline(command):
                 self.say("Не могу связаться с нейросетью, сэр. Проверьте интернет.")
             return
