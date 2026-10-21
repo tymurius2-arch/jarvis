@@ -43,7 +43,10 @@ class Core:
                 pass
 
     def log(self, text: str, kind: str = "info"):
-        print(f"[{kind}] {text}")
+        try:
+            print(f"[{kind}] {text}")
+        except Exception:
+            pass  # в .exe без консоли или в консоли без UTF-8
         self.emit({"type": "log", "kind": kind, "text": text, "time": time.strftime("%H:%M:%S")})
 
     def chat(self, role: str, text: str):
