@@ -16,16 +16,10 @@ def clean_for_speech(text: str) -> str:
 async def _edge(text, voice, rate, pitch) -> bytes:
     import edge_tts
 
-    com = edge_tts.Communicate(text, voice=voice, rate=rate, pitch=pitch)
+    # receive_timeout: сдаёмся, только если сервис замолчал на 10 секунд (длинная фраза — не проблема)
+    com = edge_tts.Communicate(text, voice=voice, rate=rate, pitch=pitch, connect_timeout=8, receive_timeout=10)
     buf = bytearray()
-    stream = com.stream().__aiter__()
-    while True:
-        # Ждём каждый кусочек звука не дольше 8 секунд: длинная фраза — не повод сдаваться,
-        # а вот если сервис замолчал — пробуем заново.
-        try:
-            chunk = await asyncio.wait_for(stream.__anext__(), timeout=8)
-        except StopAsyncIteration:
-            break
+    async for chunk in com.stream():
         if chunk.get("type") == "audio":
             buf.extend(chunk["data"])
     return bytes(buf)
@@ -48,21 +42,39 @@ def split_sentences(text: str, limit: int = 220) -> list[str]:
     return out
 
 
+def elevenlabs(text: str, cfg: dict) -> bytes:
+    r = requests.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{cfg['elevenlabs_voice']}",
+        params={"output_format": "mp3_44100_128"},
+        headers={"xi-api-key": cfg["elevenlabs_key"]},
+        json={"text": text, "model_id": "eleven_flash_v2_5"}, timeout=30)
+    if r.status_code >= 400:
+        try:
+            detail = r.json().get("detail", {})
+            msg = detail.get("message") if isinstance(detail, dict) else str(detail)
+        except Exception:
+            msg = r.text[:200]
+        raise RuntimeError(f"ElevenLabs {r.status_code}: {msg}")
+    return r.content
+
+
+def edge(text: str, cfg: dict) -> bytes:
+    voice, rate, pitch = cfg.get("voice", "ru-RU-DmitryNeural"), cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")
+    return asyncio.run(_edge(text, voice, rate, pitch))
+
+
 def synthesize(text: str, cfg: dict) -> bytes:
-    """Возвращает mp3."""
+    """Основной голос (mp3): ElevenLabs, если включён, иначе голос Microsoft."""
     text = clean_for_speech(text)
     if not text:
         return b""
-    if cfg.get("provider") == "elevenlabs" and cfg.get("elevenlabs_key") and cfg.get("elevenlabs_voice"):
-        r = requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{cfg['elevenlabs_voice']}",
-            params={"output_format": "mp3_44100_128"},
-            headers={"xi-api-key": cfg["elevenlabs_key"]},
-            json={"text": text, "model_id": "eleven_flash_v2_5"}, timeout=30)
-        r.raise_for_status()
-        return r.content
-    voice, rate, pitch = cfg.get("voice", "ru-RU-DmitryNeural"), cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")
-    return asyncio.run(_edge(text, voice, rate, pitch))
+    if use_elevenlabs(cfg):
+        return elevenlabs(text, cfg)
+    return edge(text, cfg)
+
+
+def use_elevenlabs(cfg: dict) -> bool:
+    return cfg.get("provider") == "elevenlabs" and bool(cfg.get("elevenlabs_key")) and bool(cfg.get("elevenlabs_voice"))
 
 
 def windows_voice(text: str) -> bytes:
@@ -85,27 +97,38 @@ def windows_voice(text: str) -> bytes:
         return f.read()
 
 
-_edge_down_until = 0.0
+_down_until: dict = {}  # голос -> до какого времени не пробовать (после сбоя)
+last_error = ""
 
 
 def speak_audio(text: str, cfg: dict, log=print):
-    """Готовит звук фразы. Если основной голос не отвечает — пробует ещё раз, потом голос Windows."""
-    global _edge_down_until
+    """Готовит звук фразы по цепочке: ElevenLabs (если включён) → голос Microsoft → голос Windows."""
+    global last_error
     import time
 
+    text = clean_for_speech(text)
+    chain = []
+    if use_elevenlabs(cfg):
+        chain.append(("ElevenLabs", elevenlabs))
+    chain.append(("Microsoft", edge))
     errors = []
-    attempts = 0 if time.time() < _edge_down_until and cfg.get("provider") != "elevenlabs" else 2
-    for attempt in range(attempts):
-        try:
-            audio = synthesize(text, cfg)
-            if audio:
-                return decode(audio)
-        except Exception as e:
-            errors.append(f"{type(e).__name__}: {e}")
+    for name, fn in chain:
+        if time.time() < _down_until.get(name, 0):
+            continue
+        for _attempt in range(2 if name == "Microsoft" else 1):
+            try:
+                audio = fn(text, cfg)
+                if audio:
+                    _down_until.pop(name, None)
+                    return decode(audio)
+            except Exception as e:
+                err = f"{type(e).__name__}: {e}".strip()
+                errors.append(f"{name} — {err}")
+        _down_until[name] = time.time() + 60  # минуту не мучаем этот голос, потом пробуем снова
     if errors:
-        _edge_down_until = time.time() + 60  # минуту не мучаем сервис, потом пробуем снова
-        log("Основной голос не ответил (" + "; ".join(errors)[:300] + ") — говорю голосом Windows")
-    return decode(windows_voice(clean_for_speech(text)))
+        last_error = "; ".join(errors)[:300]
+        log("Основной голос не ответил (" + last_error + ") — говорю голосом Windows")
+    return decode(windows_voice(text))
 
 
 def decode(mp3: bytes):

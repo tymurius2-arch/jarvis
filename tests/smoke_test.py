@@ -54,7 +54,10 @@ print("инструменты:", len(core.tools.specs))
 print(core.tools.call("get_time", {}))
 
 if "--no-net" not in sys.argv:
-    x, sr = tts.speak_audio("Добрый вечер, сэр.", core.settings["tts"])
+    # Голос Microsoft должен работать сам, без запасного
+    mp3 = tts.edge("Добрый вечер, сэр.", core.settings["tts"])
+    assert len(mp3) > 2000, "голос Microsoft вернул пустой звук"
+    x, sr = tts.decode(mp3)
     x = tts.jarvis_fx(x, sr)
     assert len(x) / sr > 0.5
     print(f"голос: ок ({len(x) / sr:.1f} с)")

@@ -76,7 +76,7 @@ class Core:
         def log(m):
             self.log(m, "error")
             if "голосом Windows" in m:
-                self.notice("🔈 Голос Microsoft временно не отвечает — говорю запасным голосом Windows", every=300)
+                self.notice("🔈 Основной голос не работает, говорю запасным. Причина: " + tts.last_error[:180], every=120)
         with self.speech_lock:
             chunks = tts.split_sentences(text)
             ready: queue.Queue = queue.Queue()
