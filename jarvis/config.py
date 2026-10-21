@@ -67,12 +67,12 @@ PROVIDERS = {
 
 VOICES = [
     {"id": "ru-RU-DmitryNeural", "title": "Дмитрий — русский, мужской (по умолчанию)"},
-    {"id": "en-GB-RyanNeural", "title": "Ryan — британский, как в фильме (English)"},
-    {"id": "en-GB-ThomasNeural", "title": "Thomas — британский, мягкий (English)"},
+    {"id": "en-US-AndrewMultilingualNeural", "title": "Andrew — по-русски с английским акцентом"},
+    {"id": "en-US-BrianMultilingualNeural", "title": "Brian — по-русски с английским акцентом, ниже"},
+    {"id": "de-DE-FlorianMultilingualNeural", "title": "Florian — по-русски с акцентом"},
     {"id": "uk-UA-OstapNeural", "title": "Остап — украинский, мужской"},
-    {"id": "en-US-GuyNeural", "title": "Guy — американский (English)"},
-    {"id": "en-US-AndrewMultilingualNeural", "title": "Andrew — говорит на любом языке"},
-    {"id": "de-DE-FlorianMultilingualNeural", "title": "Florian — говорит на любом языке"},
+    {"id": "en-GB-RyanNeural", "title": "Ryan — британский (ТОЛЬКО английский текст)"},
+    {"id": "en-GB-ThomasNeural", "title": "Thomas — британский (ТОЛЬКО английский текст)"},
 ]
 
 DEFAULTS = {

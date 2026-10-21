@@ -55,7 +55,10 @@ class Brain:
                 from openai import OpenAI
 
                 base = cfg.get("base_url") or PROVIDERS.get(cfg["provider"], {}).get("base_url")
-                self._client = OpenAI(api_key=cfg.get("api_key") or "ollama", base_url=base, max_retries=0, timeout=30,
+                # Нейросеть на своём компьютере думает дольше (и сначала загружается в видеокарту)
+                slow = cfg["provider"] in ("ollama", "custom")
+                self._client = OpenAI(api_key=cfg.get("api_key") or "ollama", base_url=base, max_retries=0,
+                                      timeout=180 if slow else 30,
                                       default_headers={"X-Title": "J.A.R.V.I.S.",
                                                        "HTTP-Referer": "https://github.com/tymurius2-arch/jarvis"})
             self._client_sig = sig

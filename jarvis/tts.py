@@ -59,7 +59,16 @@ def elevenlabs(text: str, cfg: dict) -> bytes:
 
 
 def edge(text: str, cfg: dict) -> bytes:
-    voice, rate, pitch = cfg.get("voice", "ru-RU-DmitryNeural"), cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")
+    voice = cfg.get("voice") or "ru-RU-DmitryNeural"
+    rate, pitch = str(cfg.get("rate", "+0%")).strip(), str(cfg.get("pitch", "+0Hz")).strip()
+    # Неверная скорость/высота — частая причина «No audio received»
+    if not re.fullmatch(r"[+-]\d{1,3}%", rate):
+        rate = "+0%"
+    if not re.fullmatch(r"[+-]\d{1,3}Hz", pitch):
+        pitch = "+0Hz"
+    # Английский голос не умеет читать русский текст — тогда говорит Дмитрий
+    if re.search(r"[а-яёіїєґ]", text, re.I) and not re.match(r"(ru|uk)-", voice) and "Multilingual" not in voice:
+        voice = "uk-UA-OstapNeural" if voice.startswith("uk") else "ru-RU-DmitryNeural"
     return asyncio.run(_edge(text, voice, rate, pitch))
 
 

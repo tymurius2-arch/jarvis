@@ -58,6 +58,11 @@ if "--no-net" not in sys.argv:
     mp3 = tts.edge("Добрый вечер, сэр.", core.settings["tts"])
     assert len(mp3) > 2000, "голос Microsoft вернул пустой звук"
     x, sr = tts.decode(mp3)
+    # Английский голос + русский текст не должен ломать озвучку
+    mp3 = tts.edge("Запускаю, сэр.", {"voice": "en-GB-RyanNeural", "rate": "+8%", "pitch": "-4Hz"})
+    assert len(mp3) > 2000
+    for v in ("en-US-AndrewMultilingualNeural", "en-US-BrianMultilingualNeural", "de-DE-FlorianMultilingualNeural"):
+        assert len(tts.edge("Добрый вечер, сэр.", {"voice": v})) > 2000, v
     x = tts.jarvis_fx(x, sr)
     assert len(x) / sr > 0.5
     print(f"голос: ок ({len(x) / sr:.1f} с)")
