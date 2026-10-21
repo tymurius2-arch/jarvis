@@ -1,4 +1,7 @@
-name: Сборка Jarvis.exe
+name: Сборка Джарвиса
+
+# Джарвис поставляется вместе с официальным Python (файлы подписаны разработчиками Python),
+# а не одним .exe из PyInstaller — такие .exe Защитник Windows часто удаляет по ошибке.
 
 on:
   push:
@@ -11,6 +14,7 @@ permissions:
 env:
   PYTHONUTF8: "1"
   PYTHONIOENCODING: utf-8
+  PY_VERSION: "3.12.10"
 
 jobs:
   build:
@@ -20,69 +24,74 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PY_VERSION }}
 
-      - name: Установка библиотек
+      - name: Установка библиотек для проверки
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt
 
       - name: Проверка (протоколы, голос, инструменты)
         run: python tests/smoke_test.py
 
-      - name: Сборка
-        run: >
-          pyinstaller --noconfirm --windowed --name Jarvis --icon assets/jarvis.ico
-          --add-data "jarvis/ui;jarvis/ui"
-          --add-data "jarvis/default_protocols.json;jarvis"
-          --collect-all webview
-          --collect-all pythonnet
-          --collect-all clr_loader
-          --hidden-import clr
-          --collect-data speech_recognition
-          --collect-submodules pycaw
-          --collect-submodules comtypes
-          --hidden-import pystray._win32
-          --hidden-import standard_aifc
-          jarvis.py
-
-      - name: Разрешение загрузки .NET из скачанной папки
+      - name: Сборка папки Джарвиса
         shell: pwsh
         run: |
-          @'
+          $out = "dist/Jarvis"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          # Официальный встраиваемый Python
+          Invoke-WebRequest "https://www.python.org/ftp/python/$env:PY_VERSION/python-$env:PY_VERSION-embed-amd64.zip" -OutFile py.zip
+          Expand-Archive py.zip "$out/python"
+          @"
+          python312.zip
+          .
+          Lib\site-packages
+          ..
+          import site
+          "@ | Set-Content -Encoding ascii "$out/python/python312._pth"
+          # Библиотеки
+          python -m pip install -r requirements.txt --target "$out/python/Lib/site-packages" --no-compile
+          # Разрешаем .NET (окно программы) загружаться из скачанной папки
+          $cfg = @"
           <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <runtime>
-              <loadFromRemoteSources enabled="true"/>
-            </runtime>
-          </configuration>
-          '@ | Set-Content -Encoding utf8 dist/Jarvis/Jarvis.exe.config
+          <configuration><runtime><loadFromRemoteSources enabled="true"/></runtime></configuration>
+          "@
+          $cfg | Set-Content -Encoding utf8 "$out/python/pythonw.exe.config"
+          $cfg | Set-Content -Encoding utf8 "$out/python/python.exe.config"
+          # Сам Джарвис
+          Copy-Item -Recurse jarvis "$out/jarvis"
+          Copy-Item -Recurse assets "$out/assets"
+          Copy-Item jarvis.py, README.md, requirements.txt "$out/"
+          Get-ChildItem -Recurse -Directory -Filter __pycache__ $out | Remove-Item -Recurse -Force
+          # Запуск двойным щелчком
+          @"
+          @echo off
+          cd /d "%~dp0"
+          start "" "python\pythonw.exe" "jarvis.py"
+          "@ | Set-Content -Encoding ascii "$out/Jarvis.bat"
 
-      - name: Проверка запуска .exe (обычного и «скачанного из интернета»)
+      - name: Проверка запуска (обычного и «скачанного из интернета»)
         shell: pwsh
         run: |
           Copy-Item -Recurse dist/Jarvis $env:RUNNER_TEMP/JarvisWeb
-          # Метка «из интернета» на всех файлах, кроме самого Jarvis.exe —
-          # его пользователь уже разрешил кнопкой «Выполнить в любом случае».
-          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisWeb | Where-Object { $_.Name -ne "Jarvis.exe" } | ForEach-Object {
+          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisWeb | ForEach-Object {
             Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
           }
           $failed = $false
           foreach ($dir in @("$PWD/dist/Jarvis", "$env:RUNNER_TEMP/JarvisWeb")) {
             "=== $dir"
-            $p = Start-Process "$dir/Jarvis.exe" -ArgumentList "--selftest" -PassThru
-            $done = $p.WaitForExit(90000)
+            $p = Start-Process "$dir/python/python.exe" -ArgumentList "`"$dir/jarvis.py`" --selftest" -WorkingDirectory $dir -PassThru -NoNewWindow
+            $done = $p.WaitForExit(120000)
             if (Test-Path "$dir/selftest.log") { Get-Content "$dir/selftest.log" } else { "selftest.log не создан" }
             if (-not $done) { Stop-Process -Id $p.Id -Force; "ЗАВИС"; $failed = $true }
             elseif ($p.ExitCode -ne 0) { "КОД $($p.ExitCode)"; $failed = $true }
-            Remove-Item "$dir/selftest.log" -ErrorAction SilentlyContinue
+            Remove-Item "$dir/selftest.log", "$dir/.unblocked" -ErrorAction SilentlyContinue
           }
-          if ($failed) { throw "Jarvis.exe не запускается" }
+          if ($failed) { throw "Джарвис не запускается" }
 
       - name: Упаковка
-        run: |
-          Copy-Item README.md dist/Jarvis/README.md
-          Compress-Archive -Path dist/Jarvis -DestinationPath Jarvis-Windows.zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/Jarvis -DestinationPath Jarvis-Windows.zip
 
       - uses: actions/upload-artifact@v4
         with:
@@ -93,10 +102,11 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Джарвис v1.0.${{ github.run_number }}
+          tag_name: v1.1.${{ github.run_number }}
+          name: Джарвис v1.1.${{ github.run_number }}
           make_latest: true
           body: |
-            Скачайте **Jarvis-Windows.zip**, распакуйте и запустите **Jarvis.exe**.
-            Если Windows покажет синее окно «Защитник Windows» — нажмите «Подробнее» → «Выполнить в любом случае».
+            1. Скачайте **Jarvis-Windows.zip** и распакуйте (правой кнопкой → «Извлечь всё»).
+            2. Запустите **Jarvis.bat** в папке Jarvis. При первом запуске на рабочем столе появится ярлык «Джарвис».
+            Если Windows спросит «Запустить этот файл?» — нажмите «Запустить» (или «Подробнее» → «Выполнить в любом случае»).
           files: Jarvis-Windows.zip
