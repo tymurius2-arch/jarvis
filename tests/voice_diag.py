@@ -29,3 +29,11 @@ for i in range(6):
     attempt(f"с повторами #{i}", f"Проверка номер {i}, сэр.", base)
 for txt in ["Да?", "Готово.", "Добрый вечер, сэр. Все системы в норме.", "Сэр, я готов помочь. Чем могу служить?"]:
     attempt(f"текст «{txt}»", txt, base)
+
+for cfg_name, cfg in (("обычно", base), ("без высоты", plain)):
+    for txt in ("Проверка номер 3, сэр.", "Проверка номер три, сэр.", "Громкость 50 процентов."):
+        try:
+            n = len(__import__("asyncio").run(tts._edge(txt, cfg["voice"], cfg["rate"], cfg["pitch"])))
+            print(f"OK   один запрос [{cfg_name}] «{txt}»: {n}")
+        except Exception as e:
+            print(f"FAIL один запрос [{cfg_name}] «{txt}»: {type(e).__name__}")

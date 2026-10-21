@@ -4,6 +4,7 @@ miniaudio>=1.61
 sounddevice>=0.5
 numpy>=1.26
 requests>=2.31
+num2words>=0.5.13
 openai>=1.50
 anthropic>=0.40
 SpeechRecognition>=3.14

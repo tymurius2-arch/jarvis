@@ -86,18 +86,40 @@ def edge(text: str, cfg: dict) -> bytes:
 _cache: dict = {}
 
 
-async def _edge_retry(text, voice, rate, pitch, tries=3) -> bytes:
-    """Сервис Microsoft иногда случайно не отдаёт звук (особенно при частых запросах) —
-    пробуем ещё раз с короткой паузой."""
-    last = None
-    for i in range(tries):
+def numbers_to_words(text: str) -> str:
+    """«3» → «три»: сервис Microsoft иногда спотыкается о цифры в русском тексте."""
+    try:
+        from num2words import num2words
+    except Exception:
+        return text
+    lang = "uk" if re.search(r"[іїєґ]", text, re.I) else "ru" if re.search(r"[а-яё]", text, re.I) else "en"
+
+    def repl(m):
         try:
-            audio = await _edge(text, voice, rate, pitch)
+            return num2words(int(m.group(0)), lang=lang)
+        except Exception:
+            return m.group(0)
+    return re.sub(r"\d+", repl, text)
+
+
+async def _edge_retry(text, voice, rate, pitch) -> bytes:
+    """Сервис Microsoft на некоторых фразах не отдаёт звук. Пробуем по очереди:
+    как есть → без изменения скорости/высоты → цифры словами."""
+    plain_text = numbers_to_words(text)
+    variants = [(text, rate, pitch), (text, "+0%", "+0Hz"), (plain_text, rate, pitch), (plain_text, "+0%", "+0Hz")]
+    last = None
+    seen = set()
+    for i, (t, r, p) in enumerate(variants):
+        if (t, r, p) in seen:
+            continue
+        seen.add((t, r, p))
+        try:
+            audio = await _edge(t, voice, r, p)
             if audio:
                 return audio
         except Exception as e:
             last = e
-        await asyncio.sleep(0.3 + 0.4 * i)
+        await asyncio.sleep(0.2)
     raise last or RuntimeError("Голос Microsoft не прислал звук")
 
 
