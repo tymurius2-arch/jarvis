@@ -46,7 +46,9 @@ PROVIDERS = {
     "openrouter": {
         "title": "OpenRouter — сотни моделей по одному ключу",
         "base_url": "https://openrouter.ai/api/v1",
-        "models": ["openai/gpt-oss-120b", "google/gemini-flash-latest", "anthropic/claude-haiku-5-5"],
+        "models": ["google/gemini-3.8-flash", "openai/gpt-oss-120b", "anthropic/claude-haiku-5.5",
+                   "deepseek/deepseek-v4.1-flash", "anthropic/claude-sonnet-5.5",
+                   "nvidia/nemotron-3-super-120b-a12b:free", "google/gemma-4-31b-it:free"],
         "key_url": "https://openrouter.ai/keys",
     },
     "ollama": {
@@ -120,6 +122,9 @@ class Settings:
                 self.data = _merge(DEFAULTS, json.loads(self.path.read_text("utf-8")))
             except Exception:
                 pass
+        # Старые неверные названия моделей OpenRouter из первых версий
+        if self.data["llm"].get("model") in ("google/gemini-flash-latest", "anthropic/claude-haiku-5-5"):
+            self.data["llm"]["model"] = "google/gemini-3.8-flash"
         # Ключ можно задать и через переменную окружения.
         if not self.data["llm"]["api_key"]:
             env = {"groq": "GROQ_API_KEY", "gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",

@@ -329,6 +329,7 @@ function fillSettings() {
   $("#s-device").value = st.stt.device ?? "";
   $("#s-sens").value = st.stt.sensitivity; $("#s-sens-v").textContent = st.stt.sensitivity;
   $("#s-stt").value = st.stt.provider; $("#s-lang").value = st.language;
+  $("#s-groq-stt").value = st.stt.groq_key || "";
   $("#s-wake").value = st.wake_words.join(", ");
   $("#s-require").checked = st.require_wake_word;
   $("#s-title").value = st.user_title;
@@ -378,6 +379,8 @@ bind("#s-el-on", "change", () => save({ tts: { provider: $("#s-el-on").checked ?
 bind("#s-test-voice", "click", async () => { clearTimeout(saveTimer); await api.save_settings({}); api.test_voice(); });
 bind("#s-device", "change", () => save({ stt: { device: $("#s-device").value === "" ? null : +$("#s-device").value } }, true));
 bind("#s-sens", "input", () => { $("#s-sens-v").textContent = $("#s-sens").value; save({ stt: { sensitivity: +$("#s-sens").value } }); });
+bind("#s-groq-stt", "input", () => save({ stt: { groq_key: $("#s-groq-stt").value.trim() } }));
+bind("#s-groq-stt-get", "click", () => api.open_link("https://console.groq.com/keys"));
 bind("#s-stt", "change", () => save({ stt: { provider: $("#s-stt").value } }, true));
 bind("#s-lang", "change", () => save({ language: $("#s-lang").value }, true));
 bind("#s-wake", "change", () => save({ wake_words: $("#s-wake").value.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean) }, true));

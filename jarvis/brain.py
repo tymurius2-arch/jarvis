@@ -55,7 +55,9 @@ class Brain:
                 from openai import OpenAI
 
                 base = cfg.get("base_url") or PROVIDERS.get(cfg["provider"], {}).get("base_url")
-                self._client = OpenAI(api_key=cfg.get("api_key") or "ollama", base_url=base, max_retries=0, timeout=30)
+                self._client = OpenAI(api_key=cfg.get("api_key") or "ollama", base_url=base, max_retries=0, timeout=30,
+                                      default_headers={"X-Title": "J.A.R.V.I.S.",
+                                                       "HTTP-Referer": "https://github.com/tymurius2-arch/jarvis"})
             self._client_sig = sig
             self.history = []
         return self._client
@@ -106,7 +108,10 @@ class Brain:
         (у каждой модели Groq свой лимит), вместо того чтобы молча ждать."""
         from .config import PROVIDERS
 
-        candidates = [model] + [m for m in PROVIDERS.get(self.cfg["provider"], {}).get("models", []) if m != model]
+        others = [m for m in PROVIDERS.get(self.cfg["provider"], {}).get("models", []) if m != model]
+        # бесплатная модель упёрлась в лимит — сначала пробуем другие бесплатные
+        others.sort(key=lambda m: m.endswith(":free") != model.endswith(":free"))
+        candidates = [model] + others
         last = None
         for i, m in enumerate(candidates):
             kw = dict(extra) if "gpt-oss" in m else {}

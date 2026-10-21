@@ -57,6 +57,12 @@ class Api:
 
     def save_settings(self, patch):
         old_dev = self._core.settings["stt"].get("device")
+        llm = self._core.settings["llm"]
+        new_provider = (patch.get("llm") or {}).get("provider")
+        if (new_provider and new_provider != llm["provider"] and llm["provider"] == "groq" and llm.get("api_key")
+                and not self._core.settings["stt"].get("groq_key")):
+            # Ушли с Groq — ключ остаётся для слуха (Whisper)
+            patch.setdefault("stt", {})["groq_key"] = llm["api_key"]
         self._core.settings.update(patch)
         if self._core.settings["stt"].get("device") != old_dev:
             self._core.listener.restart()

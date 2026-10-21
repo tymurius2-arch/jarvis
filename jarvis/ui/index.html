@@ -155,6 +155,10 @@
           <option value="groq">Whisper через Groq — точнее всего</option>
           <option value="google">Google — без ключа</option>
         </select></label>
+        <label>Ключ Groq для слуха (бесплатно, если нейросеть не Groq)
+          <div class="row"><input id="s-groq-stt" type="password" placeholder="gsk_…">
+          <button class="ghost small" id="s-groq-stt-get">Получить</button></div>
+        </label>
         <label>Язык<select id="s-lang"><option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option></select></label>
         <label>Слова-активаторы (через запятую)<input id="s-wake"></label>
         <label class="switch"><input type="checkbox" id="s-require"><span class="slider"></span><em>Реагировать только после слова «Джарвис»</em></label>
