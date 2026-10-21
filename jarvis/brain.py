@@ -98,9 +98,15 @@ class Brain:
         extra = {}
         if "gpt-oss" in model and self.cfg["provider"] in ("groq", "openrouter"):
             extra["reasoning_effort"] = "low"
+        if self.cfg["provider"] in ("ollama", "custom"):
+            extra["extra_body"] = {"think": False}  # Qwen3/DeepSeek: без долгих «размышлений»
         for _ in range(8):
             resp = self._complete(client, model, tools, extra)
             msg = resp.choices[0].message
+            if msg.content and "<think>" in msg.content:
+                import re as _re
+
+                msg.content = _re.sub(r"<think>.*?</think>", "", msg.content, flags=_re.S).strip()
             calls = msg.tool_calls or []
             entry = {"role": "assistant", "content": msg.content or ""}
             if calls:
@@ -152,10 +158,13 @@ class Brain:
         candidates = [model] + others
         last = None
         for i, m in enumerate(candidates):
-            kw = dict(extra) if "gpt-oss" in m else {}
+            kw = {k: v for k, v in extra.items() if k != "reasoning_effort" or "gpt-oss" in m}
             try:
+                system_text = self._system()
+                if "qwen3" in m.lower() and self.cfg["provider"] in ("ollama", "custom"):
+                    system_text += "\n/no_think"
                 resp = client.chat.completions.create(
-                    model=m, messages=[{"role": "system", "content": self._system()}] + self.history,
+                    model=m, messages=[{"role": "system", "content": system_text}] + self.history,
                     tools=tools, tool_choice="auto", temperature=0.6, max_tokens=1024, **kw)
                 if i:
                     self.core.notice(f"⏳ Лимит модели {model} — отвечаю через {m}", every=60)
