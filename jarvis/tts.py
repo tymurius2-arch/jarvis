@@ -69,7 +69,39 @@ def edge(text: str, cfg: dict) -> bytes:
     # Английский голос не умеет читать русский текст — тогда говорит Дмитрий
     if re.search(r"[а-яёіїєґ]", text, re.I) and not re.match(r"(ru|uk)-", voice) and "Multilingual" not in voice:
         voice = "uk-UA-OstapNeural" if voice.startswith("uk") else "ru-RU-DmitryNeural"
-    return asyncio.run(_edge(text, voice, rate, pitch))
+    key = (text, voice, rate, pitch)
+    if key in _cache:
+        return _cache[key]
+    audio = asyncio.run(_edge_race(text, voice, rate, pitch))
+    if len(text) <= 60:  # короткие фразы («Да, сэр?», «Готово») запоминаем — потом звучат мгновенно
+        if len(_cache) > 200:
+            _cache.pop(next(iter(_cache)))
+        _cache[key] = audio
+    return audio
+
+
+_cache: dict = {}
+
+
+async def _edge_race(text, voice, rate, pitch, rounds=2, parallel=2) -> bytes:
+    """Сервис Microsoft случайно не отдаёт звук примерно в трети запросов.
+    Поэтому шлём сразу два запроса и берём первый удачный; если оба мимо — ещё раунд."""
+    last = None
+    for _ in range(rounds):
+        tasks = [asyncio.create_task(_edge(text, voice, rate, pitch)) for _ in range(parallel)]
+        try:
+            for fut in asyncio.as_completed(tasks):
+                try:
+                    audio = await fut
+                    if audio:
+                        return audio
+                except Exception as e:
+                    last = e
+        finally:
+            for t in tasks:
+                t.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+    raise last or RuntimeError("Голос Microsoft не прислал звук")
 
 
 def synthesize(text: str, cfg: dict) -> bytes:
@@ -124,7 +156,7 @@ def speak_audio(text: str, cfg: dict, log=print):
     for name, fn in chain:
         if time.time() < _down_until.get(name, 0):
             continue
-        for _attempt in range(2 if name == "Microsoft" else 1):
+        for _attempt in range(1):
             try:
                 audio = fn(text, cfg)
                 if audio:
@@ -133,7 +165,7 @@ def speak_audio(text: str, cfg: dict, log=print):
             except Exception as e:
                 err = f"{type(e).__name__}: {e}".strip()
                 errors.append(f"{name} — {err}")
-        _down_until[name] = time.time() + 60  # минуту не мучаем этот голос, потом пробуем снова
+        _down_until[name] = time.time() + 20  # немного не мучаем этот голос, потом пробуем снова
     if errors:
         last_error = "; ".join(errors)[:300]
         log("Основной голос не ответил (" + last_error + ") — говорю голосом Windows")
