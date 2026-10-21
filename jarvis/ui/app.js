@@ -341,6 +341,7 @@ function fillModels() {
   $("#s-models").innerHTML = (p.models || []).map((m) => `<option value="${m}">`).join("");
   $("#s-base-wrap").classList.toggle("hidden", !["custom", "ollama"].includes($("#s-provider").value));
   $("#s-key-get").classList.toggle("hidden", !p.key_url);
+  $("#s-ai-hint").textContent = p.hint || "";
 }
 let saveTimer;
 function save(patch, now) {

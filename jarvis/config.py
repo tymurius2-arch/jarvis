@@ -26,24 +26,28 @@ def data_dir() -> Path:
 # Готовые провайдеры нейросетей. Все, кроме Claude, говорят на "OpenAI-совместимом" языке.
 PROVIDERS = {
     "groq": {
+        "hint": "Бесплатно: войдите через Google на console.groq.com → «Create API Key» → вставьте сюда. Этот же ключ даёт Джарвису отличный слух (Whisper).",
         "title": "Groq — бесплатно и очень быстро (рекомендую)",
         "base_url": "https://api.groq.com/openai/v1",
         "models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"],
         "key_url": "https://console.groq.com/keys",
     },
     "gemini": {
+        "hint": "Бесплатно: aistudio.google.com/apikey → «Create API key» → вставьте сюда. Если модель перегружена, Джарвис сам возьмёт запасную.",
         "title": "Google Gemini — есть бесплатный лимит",
         "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
         "models": ["gemini-flash-latest", "gemini-pro-latest", "gemini-flash-lite-latest"],
         "key_url": "https://aistudio.google.com/apikey",
     },
     "anthropic": {
+        "hint": "Платно: console.anthropic.com → Settings → API Keys → «Create Key».",
         "title": "Claude (Anthropic) — самый умный, платный",
         "base_url": "",
         "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
         "key_url": "https://console.anthropic.com/settings/keys",
     },
     "openrouter": {
+        "hint": "openrouter.ai/keys → «Create Key». Модели с «:free» — бесплатные, но с маленьким лимитом.",
         "title": "OpenRouter — сотни моделей по одному ключу",
         "base_url": "https://openrouter.ai/api/v1",
         "models": ["google/gemini-3.8-flash", "openai/gpt-oss-120b", "anthropic/claude-haiku-5.5",
@@ -52,12 +56,14 @@ PROVIDERS = {
         "key_url": "https://openrouter.ai/keys",
     },
     "ollama": {
+        "hint": "Ключ не нужен. Установите Ollama, в командной строке: ollama pull qwen3:8b. Работает без лимитов, но медленнее облачных.",
         "title": "Ollama — нейросеть прямо на твоём компьютере, без интернета",
         "base_url": "http://localhost:11434/v1",
         "models": ["qwen3:8b", "llama3.1:8b", "gpt-oss:20b"],
         "key_url": "https://ollama.com/download",
     },
     "custom": {
+        "hint": "Адрес и ключ любого OpenAI-совместимого сервера.",
         "title": "Другой (OpenAI-совместимый адрес)",
         "base_url": "",
         "models": [],

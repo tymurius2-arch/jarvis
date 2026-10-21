@@ -167,11 +167,16 @@ class Brain:
                     model=m, messages=[{"role": "system", "content": system_text}] + self.history,
                     tools=tools, tool_choice="auto", temperature=0.6, max_tokens=1024, **kw)
                 if i:
-                    self.core.notice(f"⏳ Лимит модели {model} — отвечаю через {m}", every=60)
+                    self.core.notice(f"⏳ Модель {model} сейчас недоступна (лимит или перегрузка) — отвечаю через {m}",
+                                     every=60)
                 return resp
             except Exception as e:
                 text = str(e)
-                if not ("429" in text or "rate limit" in text.lower() or "413" in text or "model_decommissioned" in text):
+                low = text.lower()
+                busy = ("429" in text or "rate limit" in low or "413" in text or "model_decommissioned" in text
+                        or "503" in text or "502" in text or "500" in text or "overloaded" in low
+                        or "high demand" in low or "unavailable" in low or "not found" in low and "model" in low)
+                if not busy:
                     raise
                 last = e
         raise last
