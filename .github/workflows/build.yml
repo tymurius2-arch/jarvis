@@ -36,12 +36,38 @@ jobs:
           --add-data "jarvis/ui;jarvis/ui"
           --add-data "jarvis/default_protocols.json;jarvis"
           --collect-all webview
+          --collect-all pythonnet
+          --collect-all clr_loader
+          --hidden-import clr
           --collect-data speech_recognition
           --collect-submodules pycaw
           --collect-submodules comtypes
           --hidden-import pystray._win32
           --hidden-import standard_aifc
           jarvis.py
+
+      - name: Разрешение загрузки .NET из скачанной папки
+        shell: pwsh
+        run: |
+          @'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <runtime>
+              <loadFromRemoteSources enabled="true"/>
+            </runtime>
+          </configuration>
+          '@ | Set-Content -Encoding utf8 dist/Jarvis/Jarvis.exe.config
+
+      - name: Проверка .exe как будто скачан из интернета
+        shell: pwsh
+        run: |
+          Copy-Item -Recurse dist/Jarvis $env:RUNNER_TEMP/JarvisTest
+          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisTest | ForEach-Object {
+            Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
+          }
+          $p = Start-Process "$env:RUNNER_TEMP/JarvisTest/Jarvis.exe" -ArgumentList "--selftest" -PassThru -Wait
+          Get-Content "$env:RUNNER_TEMP/JarvisTest/selftest.log"
+          if ($p.ExitCode -ne 0) { throw "Jarvis.exe не запустился (код $($p.ExitCode))" }
 
       - name: Упаковка
         run: |
