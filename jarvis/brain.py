@@ -64,8 +64,8 @@ class Brain:
         with self.lock:
             client = self._get_client()
             # Не даём истории разрастаться
-            if len(self.history) > 30:
-                self.history = self.history[-20:]
+            if len(self.history) > 16:
+                self.history = self.history[-10:]
                 while self.history and not self._is_user_text(self.history[0]):
                     self.history.pop(0)
             if self.cfg["provider"] == "anthropic":
@@ -101,7 +101,7 @@ class Brain:
                 return (msg.content or "").strip()
             for c in calls:
                 result = self.core.tools.call(c.function.name, c.function.arguments)
-                self.history.append({"role": "tool", "tool_call_id": c.id, "content": result})
+                self.history.append({"role": "tool", "tool_call_id": c.id, "content": result[:1500]})
         return "Готово, " + self.core.settings["user_title"] + "."
 
     # ---------- Claude ----------
@@ -120,6 +120,6 @@ class Brain:
             results = []
             for b in uses:
                 results.append({"type": "tool_result", "tool_use_id": b.id,
-                                "content": self.core.tools.call(b.name, json.dumps(b.input))})
+                                "content": self.core.tools.call(b.name, json.dumps(b.input))[:1500]})
             self.history.append({"role": "user", "content": results})
         return "Готово, " + self.core.settings["user_title"] + "."

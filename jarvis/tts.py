@@ -18,10 +18,34 @@ async def _edge(text, voice, rate, pitch) -> bytes:
 
     com = edge_tts.Communicate(text, voice=voice, rate=rate, pitch=pitch)
     buf = bytearray()
-    async for chunk in com.stream():
+    stream = com.stream().__aiter__()
+    while True:
+        # Ждём каждый кусочек звука не дольше 8 секунд: длинная фраза — не повод сдаваться,
+        # а вот если сервис замолчал — пробуем заново.
+        try:
+            chunk = await asyncio.wait_for(stream.__anext__(), timeout=8)
+        except StopAsyncIteration:
+            break
         if chunk.get("type") == "audio":
             buf.extend(chunk["data"])
     return bytes(buf)
+
+
+def split_sentences(text: str, limit: int = 220) -> list[str]:
+    """Режем ответ на куски по предложениям: первый кусок озвучивается, пока готовятся остальные."""
+    parts = re.split(r"(?<=[.!?…;:])\s+", text.strip())
+    out, cur = [], ""
+    for p in parts:
+        if not p:
+            continue
+        if cur and (len(cur) + len(p) > limit or not out):  # первый кусок — покороче, чтобы начать сразу
+            out.append(cur)
+            cur = p
+        else:
+            cur = f"{cur} {p}".strip()
+    if cur:
+        out.append(cur)
+    return out
 
 
 def synthesize(text: str, cfg: dict) -> bytes:
@@ -38,7 +62,7 @@ def synthesize(text: str, cfg: dict) -> bytes:
         r.raise_for_status()
         return r.content
     voice, rate, pitch = cfg.get("voice", "ru-RU-DmitryNeural"), cfg.get("rate", "+0%"), cfg.get("pitch", "+0Hz")
-    return asyncio.run(asyncio.wait_for(_edge(text, voice, rate, pitch), timeout=12))
+    return asyncio.run(_edge(text, voice, rate, pitch))
 
 
 def windows_voice(text: str) -> bytes:
@@ -50,7 +74,9 @@ def windows_voice(text: str) -> bytes:
     path = os.path.join(tempfile.gettempdir(), "jarvis_voice.wav")
     safe = text.replace("'", "''")
     script = ("Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-              "$v = $s.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'ru*' } | Select-Object -First 1; "
+              "$all = $s.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name -like 'ru*' }; "
+              "$v = $all | Where-Object { $_.VoiceInfo.Gender -eq 'Male' } | Select-Object -First 1; "
+              "if (-not $v) { $v = $all | Select-Object -First 1 }; "
               "if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }; "
               f"$s.SetOutputToWaveFile('{path}'); $s.Speak('{safe}'); $s.Dispose()")
     subprocess.run(["powershell", "-NoProfile", "-Command", script], timeout=30, check=True,
@@ -59,17 +85,26 @@ def windows_voice(text: str) -> bytes:
         return f.read()
 
 
+_edge_down_until = 0.0
+
+
 def speak_audio(text: str, cfg: dict, log=print):
     """Готовит звук фразы. Если основной голос не отвечает — пробует ещё раз, потом голос Windows."""
+    global _edge_down_until
+    import time
+
     errors = []
-    for attempt in range(2):
+    attempts = 0 if time.time() < _edge_down_until and cfg.get("provider") != "elevenlabs" else 2
+    for attempt in range(attempts):
         try:
             audio = synthesize(text, cfg)
             if audio:
                 return decode(audio)
         except Exception as e:
             errors.append(f"{type(e).__name__}: {e}")
-    log("Основной голос не ответил (" + "; ".join(errors)[:300] + ") — говорю голосом Windows")
+    if errors:
+        _edge_down_until = time.time() + 60  # минуту не мучаем сервис, потом пробуем снова
+        log("Основной голос не ответил (" + "; ".join(errors)[:300] + ") — говорю голосом Windows")
     return decode(windows_voice(clean_for_speech(text)))
 
 

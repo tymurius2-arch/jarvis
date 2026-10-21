@@ -64,24 +64,40 @@ class Core:
         self.chat("jarvis", text)
         self.emit({"type": "state", "state": "voicing"})
         cfg = self.settings["tts"]
+        log = lambda m: self.log(m, "error")  # noqa: E731
         with self.speech_lock:
-            try:
-                x, sr = tts.speak_audio(text, cfg, log=lambda m: self.log(m, "error"))
-                if cfg.get("fx", True):
-                    x = tts.jarvis_fx(x, sr)
-            except Exception as e:
-                self.log(f"Голос недоступен: {e}", "error")
-                self.emit({"type": "toast", "text": "🔇 Голос недоступен — подробности в «Журнале»"})
-                self.speech_done()
-                return
-            secs = len(x) / sr
-            self.listener.mute_for(secs + 0.7)  # чтобы Джарвис не слышал сам себя
-            self.emit({"type": "speak", "text": text, "duration": secs, "envelope": tts.envelope(x, sr)})
-            try:
-                tts.play(x, sr, cfg.get("volume", 100))
-            except Exception as e:
-                self.log(f"Не удалось воспроизвести звук: {e}", "error")
-            time.sleep(secs + 0.15)  # следующая фраза — после этой
+            chunks = tts.split_sentences(text)
+            ready: queue.Queue = queue.Queue()
+
+            def produce():
+                for part in chunks:
+                    try:
+                        x, sr = tts.speak_audio(part, cfg, log=log)
+                        if cfg.get("fx", True):
+                            x = tts.jarvis_fx(x, sr)
+                        ready.put((part, x, sr))
+                    except Exception as e:
+                        ready.put((part, e, None))
+                ready.put(None)
+
+            threading.Thread(target=produce, daemon=True).start()
+            while True:
+                item = ready.get()
+                if item is None:
+                    break
+                part, x, sr = item
+                if sr is None:
+                    self.log(f"Голос недоступен: {x}", "error")
+                    self.emit({"type": "toast", "text": "🔇 Голос недоступен — подробности в «Журнале»"})
+                    continue
+                secs = len(x) / sr
+                self.listener.mute_for(secs + 0.7)  # чтобы Джарвис не слышал сам себя
+                self.emit({"type": "speak", "text": part, "duration": secs, "envelope": tts.envelope(x, sr)})
+                try:
+                    tts.play(x, sr, cfg.get("volume", 100))
+                except Exception as e:
+                    self.log(f"Не удалось воспроизвести звук: {e}", "error")
+                time.sleep(secs + 0.08)
         self.speech_done()
 
     def speech_done(self):
