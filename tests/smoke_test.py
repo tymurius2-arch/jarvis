@@ -67,6 +67,10 @@ if "--no-net" not in sys.argv:
     assert len(x) / sr > 0.5
     print(f"голос: ок ({len(x) / sr:.1f} с)")
 if sys.platform == "win32":
+    print("голоса Windows:", tts.onecore_voices())
+    x, sr = tts.decode(tts.onecore_voice("Good evening, sir."))
+    assert len(x) / sr > 0.5
+    print("современный голос Windows: ок")
     x, sr = tts.decode(tts.windows_voice("Good evening, sir."))
     assert len(x) / sr > 0.5
     print("запасной голос Windows: ок")

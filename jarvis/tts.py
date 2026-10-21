@@ -25,8 +25,11 @@ async def _edge(text, voice, rate, pitch) -> bytes:
     return bytes(buf)
 
 
-def split_sentences(text: str, limit: int = 220) -> list[str]:
-    """Режем ответ на куски по предложениям: первый кусок озвучивается, пока готовятся остальные."""
+def split_sentences(text: str, limit: int = 400) -> list[str]:
+    """Длинный ответ режем на куски: первый озвучивается, пока готовятся остальные.
+    Короткие ответы — одним запросом (меньше запросов — меньше отказов сервиса)."""
+    if len(text) <= 250:
+        return [text.strip()] if text.strip() else []
     parts = re.split(r"(?<=[.!?…;:])\s+", text.strip())
     out, cur = [], ""
     for p in parts:
@@ -72,7 +75,7 @@ def edge(text: str, cfg: dict) -> bytes:
     key = (text, voice, rate, pitch)
     if key in _cache:
         return _cache[key]
-    audio = asyncio.run(_edge_race(text, voice, rate, pitch))
+    audio = asyncio.run(_edge_retry(text, voice, rate, pitch))
     if len(text) <= 60:  # короткие фразы («Да, сэр?», «Готово») запоминаем — потом звучат мгновенно
         if len(_cache) > 200:
             _cache.pop(next(iter(_cache)))
@@ -83,24 +86,18 @@ def edge(text: str, cfg: dict) -> bytes:
 _cache: dict = {}
 
 
-async def _edge_race(text, voice, rate, pitch, rounds=2, parallel=2) -> bytes:
-    """Сервис Microsoft случайно не отдаёт звук примерно в трети запросов.
-    Поэтому шлём сразу два запроса и берём первый удачный; если оба мимо — ещё раунд."""
+async def _edge_retry(text, voice, rate, pitch, tries=3) -> bytes:
+    """Сервис Microsoft иногда случайно не отдаёт звук (особенно при частых запросах) —
+    пробуем ещё раз с короткой паузой."""
     last = None
-    for _ in range(rounds):
-        tasks = [asyncio.create_task(_edge(text, voice, rate, pitch)) for _ in range(parallel)]
+    for i in range(tries):
         try:
-            for fut in asyncio.as_completed(tasks):
-                try:
-                    audio = await fut
-                    if audio:
-                        return audio
-                except Exception as e:
-                    last = e
-        finally:
-            for t in tasks:
-                t.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+            audio = await _edge(text, voice, rate, pitch)
+            if audio:
+                return audio
+        except Exception as e:
+            last = e
+        await asyncio.sleep(0.3 + 0.4 * i)
     raise last or RuntimeError("Голос Microsoft не прислал звук")
 
 
@@ -116,6 +113,47 @@ def synthesize(text: str, cfg: dict) -> bytes:
 
 def use_elevenlabs(cfg: dict) -> bool:
     return cfg.get("provider") == "elevenlabs" and bool(cfg.get("elevenlabs_key")) and bool(cfg.get("elevenlabs_voice"))
+
+
+def onecore_voice(text: str) -> bytes:
+    """Современный голос Windows (как у Экранного диктора): без интернета, быстро,
+    часто есть мужской русский голос «Павел». Возвращает WAV."""
+    return asyncio.run(_onecore(text))
+
+
+async def _onecore(text: str) -> bytes:
+    from winrt.windows.media.speechsynthesis import SpeechSynthesizer, VoiceGender
+    from winrt.windows.storage.streams import DataReader
+
+    lang = "uk" if re.search(r"[іїєґ]", text, re.I) else "ru" if re.search(r"[а-яё]", text, re.I) else "en"
+    voices = list(SpeechSynthesizer.all_voices)
+    same = [v for v in voices if v.language.lower().startswith(lang)]
+    if not same and lang == "uk":
+        same = [v for v in voices if v.language.lower().startswith("ru")]
+    if not same:
+        raise RuntimeError(f"в Windows нет голоса для языка {lang}")
+    male = [v for v in same if v.gender == VoiceGender.MALE]
+    synth = SpeechSynthesizer()
+    synth.voice = (male or same)[0]
+    stream = await synth.synthesize_text_to_stream_async(text)
+    size = stream.size
+    reader = DataReader(stream.get_input_stream_at(0))
+    await reader.load_async(size)
+    try:
+        buf = bytearray(size)
+        reader.read_bytes(buf)
+        return bytes(buf)
+    except TypeError:
+        return bytes(memoryview(reader.read_buffer(size)))
+
+
+def onecore_voices() -> list[str]:
+    try:
+        from winrt.windows.media.speechsynthesis import SpeechSynthesizer
+
+        return [f"{v.display_name} ({v.language}, {v.gender})" for v in SpeechSynthesizer.all_voices]
+    except Exception as e:
+        return [f"недоступно: {e}"]
 
 
 def windows_voice(text: str) -> bytes:
@@ -169,6 +207,10 @@ def speak_audio(text: str, cfg: dict, log=print):
     if errors:
         last_error = "; ".join(errors)[:300]
         log("Основной голос не ответил (" + last_error + ") — говорю голосом Windows")
+    try:
+        return decode(onecore_voice(text))
+    except Exception as e:
+        log(f"Современный голос Windows недоступен: {e}")
     return decode(windows_voice(text))
 
 
