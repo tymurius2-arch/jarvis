@@ -58,16 +58,24 @@ jobs:
           </configuration>
           '@ | Set-Content -Encoding utf8 dist/Jarvis/Jarvis.exe.config
 
-      - name: Проверка .exe как будто скачан из интернета
+      - name: Проверка запуска .exe (обычного и «скачанного из интернета»)
         shell: pwsh
         run: |
-          Copy-Item -Recurse dist/Jarvis $env:RUNNER_TEMP/JarvisTest
-          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisTest | ForEach-Object {
+          Copy-Item -Recurse dist/Jarvis $env:RUNNER_TEMP/JarvisWeb
+          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisWeb | ForEach-Object {
             Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
           }
-          $p = Start-Process "$env:RUNNER_TEMP/JarvisTest/Jarvis.exe" -ArgumentList "--selftest" -PassThru -Wait
-          Get-Content "$env:RUNNER_TEMP/JarvisTest/selftest.log"
-          if ($p.ExitCode -ne 0) { throw "Jarvis.exe не запустился (код $($p.ExitCode))" }
+          $failed = $false
+          foreach ($dir in @("$PWD/dist/Jarvis", "$env:RUNNER_TEMP/JarvisWeb")) {
+            "=== $dir"
+            $p = Start-Process "$dir/Jarvis.exe" -ArgumentList "--selftest" -PassThru
+            $done = $p.WaitForExit(90000)
+            if (Test-Path "$dir/selftest.log") { Get-Content "$dir/selftest.log" } else { "selftest.log не создан" }
+            if (-not $done) { Stop-Process -Id $p.Id -Force; "ЗАВИС"; $failed = $true }
+            elseif ($p.ExitCode -ne 0) { "КОД $($p.ExitCode)"; $failed = $true }
+            Remove-Item "$dir/selftest.log" -ErrorAction SilentlyContinue
+          }
+          if ($failed) { throw "Jarvis.exe не запускается" }
 
       - name: Упаковка
         run: |

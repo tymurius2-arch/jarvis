@@ -18,23 +18,26 @@ def _unblock(folder):
 
 def _selftest():
     """Проверка сборки: окно, звук, ядро загружаются. Код выхода 0 = всё хорошо."""
+    import importlib
     import traceback
 
-    log = os.path.join(os.path.dirname(sys.executable), "selftest.log")
+    log = open(os.path.join(os.path.dirname(sys.executable), "selftest.log"), "w", encoding="utf-8")
+    steps = ["webview", "clr", "webview.platforms.winforms", "miniaudio", "sounddevice", "jarvis.core"]
+    if sys.platform != "win32":
+        steps = [s for s in steps if s not in ("clr", "webview.platforms.winforms")]
     try:
-        import webview  # noqa: F401
-
-        if sys.platform == "win32":
-            import clr  # noqa: F401
-            from webview.platforms import winforms  # noqa: F401
-        import miniaudio  # noqa: F401
-        import sounddevice  # noqa: F401
-        from jarvis.core import Core  # noqa: F401
-
-        open(log, "w", encoding="utf-8").write("OK")
+        for name in steps:
+            log.write(f"import {name}... ")
+            log.flush()
+            importlib.import_module(name)
+            log.write("ok\n")
+            log.flush()
+        log.write("OK\n")
+        log.close()
         os._exit(0)
     except BaseException:
-        open(log, "w", encoding="utf-8").write(traceback.format_exc())
+        log.write("\n" + traceback.format_exc())
+        log.close()
         os._exit(1)
 
 
