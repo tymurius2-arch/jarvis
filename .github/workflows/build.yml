@@ -62,7 +62,9 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item -Recurse dist/Jarvis $env:RUNNER_TEMP/JarvisWeb
-          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisWeb | ForEach-Object {
+          # Метка «из интернета» на всех файлах, кроме самого Jarvis.exe —
+          # его пользователь уже разрешил кнопкой «Выполнить в любом случае».
+          Get-ChildItem -Recurse -File $env:RUNNER_TEMP/JarvisWeb | Where-Object { $_.Name -ne "Jarvis.exe" } | ForEach-Object {
             Set-Content -Path $_.FullName -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3"
           }
           $failed = $false
