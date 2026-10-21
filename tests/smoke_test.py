@@ -58,6 +58,8 @@ if "--no-net" not in sys.argv:
     mp3 = tts.edge("Добрый вечер, сэр.", core.settings["tts"])
     assert len(mp3) > 2000, "голос Microsoft вернул пустой звук"
     x, sr = tts.decode(mp3)
+    # «Проблемная» для Дмитрия фраза всё равно озвучивается (запасным голосом Microsoft)
+    assert len(tts.edge("Проверка номер 3, сэр.", core.settings["tts"])) > 2000
     # Английский голос + русский текст не должен ломать озвучку
     mp3 = tts.edge("Запускаю, сэр.", {"voice": "en-GB-RyanNeural", "rate": "+8%", "pitch": "-4Hz"})
     assert len(mp3) > 2000

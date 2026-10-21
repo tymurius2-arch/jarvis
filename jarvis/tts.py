@@ -102,24 +102,27 @@ def numbers_to_words(text: str) -> str:
     return re.sub(r"\d+", repl, text)
 
 
+# Голос Дмитрия у Microsoft иногда «не может» прочитать фразу (проверено: 2 из 4),
+# а многоязычные мужские голоса читают те же фразы без сбоев.
+BACKUP_VOICES = ["en-US-BrianMultilingualNeural", "en-US-AndrewMultilingualNeural"]
+
+
 async def _edge_retry(text, voice, rate, pitch) -> bytes:
-    """Сервис Microsoft на некоторых фразах не отдаёт звук. Пробуем по очереди:
-    как есть → без изменения скорости/высоты → цифры словами."""
-    plain_text = numbers_to_words(text)
-    variants = [(text, rate, pitch), (text, "+0%", "+0Hz"), (plain_text, rate, pitch), (plain_text, "+0%", "+0Hz")]
+    """Пробуем: выбранный голос → он же без смены скорости/высоты → запасные мужские голоса Microsoft."""
+    variants = [(voice, rate, pitch), (voice, "+0%", "+0Hz")]
+    variants += [(v, rate, pitch) for v in BACKUP_VOICES if v != voice]
     last = None
     seen = set()
-    for i, (t, r, p) in enumerate(variants):
-        if (t, r, p) in seen:
+    for v, r, p in variants:
+        if (v, r, p) in seen:
             continue
-        seen.add((t, r, p))
+        seen.add((v, r, p))
         try:
-            audio = await _edge(t, voice, r, p)
+            audio = await _edge(text, v, r, p)
             if audio:
                 return audio
         except Exception as e:
             last = e
-        await asyncio.sleep(0.2)
     raise last or RuntimeError("Голос Microsoft не прислал звук")
 
 
