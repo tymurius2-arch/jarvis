@@ -155,9 +155,9 @@ class Listener:
                 voiced.append(block)
                 silent = silent + 1 if rms < threshold * 0.8 else 0
                 too_long = len(voiced) * BLOCK / RATE > 14
-                if silent >= 27 or too_long:  # ~0.8 c тишины
+                if silent >= 20 or too_long:  # ~0.6 c тишины
                     speaking = False
-                    pcm = b"".join(voiced[:-20] if not too_long else voiced)
+                    pcm = b"".join(voiced[:-14] if not too_long else voiced)
                     voiced = []
                     preroll = []
                     dur = len(pcm) / 2 / RATE

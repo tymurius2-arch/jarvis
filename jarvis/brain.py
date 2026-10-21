@@ -39,7 +39,16 @@ class Brain:
     def _system(self):
         from . import system
 
-        return SYSTEM_PROMPT.format(title=self.core.settings["user_title"], now=system.now())
+        prompt = SYSTEM_PROMPT.format(title=self.core.settings["user_title"], now=system.now())
+        try:
+            from . import steam
+
+            games = [g["name"] for g in steam.installed_games()][:80]
+            if games:
+                prompt += "\nУстановленные игры Steam (запускай через launch_steam_game): " + ", ".join(games) + "."
+        except Exception:
+            pass
+        return prompt
 
     def _get_client(self):
         from .config import PROVIDERS
@@ -101,10 +110,36 @@ class Brain:
             self.history.append(entry)
             if not calls:
                 return (msg.content or "").strip()
+            results = []
             for c in calls:
                 result = self.core.tools.call(c.function.name, c.function.arguments)
+                results.append((c.function.name, result))
                 self.history.append({"role": "tool", "tool_call_id": c.id, "content": result[:1500]})
+            quick = self._quick_reply(results, msg.content)
+            if quick:
+                self.history.append({"role": "assistant", "content": quick})
+                return quick
         return "Готово, " + self.core.settings["user_title"] + "."
+
+    # Инструменты-действия: после них не нужно снова спрашивать нейросеть, что сказать
+    ACTIONS = {"open_app": "Открываю", "close_app": "Закрываю", "launch_steam_game": "Запускаю",
+               "run_protocol": "Выполняю", "open_url": "Открываю", "web_search": "Ищу", "youtube": "Включаю",
+               "set_volume": "Готово", "change_volume": "Готово", "mute": "Готово", "media_control": "Готово",
+               "press_keys": "Готово", "type_text": "Готово", "set_timer": "Таймер поставлен",
+               "screenshot": "Скриншот сохранён", "open_folder": "Открываю", "write_note": "Записал"}
+    BAD = ("Не нашёл", "не найден", "Ошибка", "Отказано", "Неверные", "Нет такого", "Подтверждение", "недоступ")
+
+    def _quick_reply(self, results, content):
+        """Если были только простые действия и все удались — отвечаем сразу, без второго запроса к нейросети
+        (экономит 1–5 секунд)."""
+        if not results or any(name not in self.ACTIONS for name, _ in results):
+            return None
+        if any(any(b.lower() in r.lower() for b in self.BAD) for _, r in results):
+            return None
+        title = self.core.settings["user_title"]
+        if content and content.strip():
+            return content.strip()
+        return f"{self.ACTIONS[results[0][0]]}, {title}."
 
     def _complete(self, client, model, tools, extra):
         """Запрос к нейросети. Если у модели кончился бесплатный лимит — сразу берём запасную модель
@@ -145,9 +180,15 @@ class Brain:
             uses = [b for b in resp.content if b.type == "tool_use"]
             if resp.stop_reason != "tool_use" or not uses:
                 return " ".join(b.text for b in resp.content if b.type == "text").strip()
-            results = []
+            results, done = [], []
             for b in uses:
-                results.append({"type": "tool_result", "tool_use_id": b.id,
-                                "content": self.core.tools.call(b.name, json.dumps(b.input))[:1500]})
+                r = self.core.tools.call(b.name, json.dumps(b.input))
+                done.append((b.name, r))
+                results.append({"type": "tool_result", "tool_use_id": b.id, "content": r[:1500]})
             self.history.append({"role": "user", "content": results})
+            text = " ".join(b.text for b in resp.content if b.type == "text").strip()
+            quick = self._quick_reply(done, text)
+            if quick:
+                self.history.append({"role": "assistant", "content": quick})
+                return quick
         return "Готово, " + self.core.settings["user_title"] + "."

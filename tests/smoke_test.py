@@ -42,6 +42,36 @@ core.on_heard("просто разговор на фоне")
 assert events[-1].get("c") != "просто разговор на фоне"
 print("слово-активатор: ок")
 
+# Быстрые команды без нейросети
+from jarvis import steam as _steam, system as _system  # noqa: E402
+_steam._cache = [{"appid": 322170, "name": "Geometry Dash"}, {"appid": 284160, "name": "BeamNG.drive"},
+                 {"appid": 730, "name": "Counter-Strike 2"}, {"appid": 252490, "name": "Rust"}]
+launched, said = [], []
+_steam.launch = launched.append
+core.say = lambda text, *a, **k: said.append(text)
+_system.set_volume = lambda v: launched.append(("vol", v))
+for phrase, appid in [("запусти geometry dash", 322170), ("запусти геометри дэш", 322170),
+                      ("врубай геометрию даш", 322170), ("открой кс", 730), ("запусти раст пожалуйста", 252490),
+                      ("запусти counter strike", 730)]:
+    launched.clear()
+    assert core.fast_command(phrase), phrase
+    assert launched == [appid], (phrase, launched)
+for phrase in ["включи музыку", "кстати как дела", "запусти ракету в космос", "какая погода в киеве",
+               "открой мне что-нибудь интересное"]:
+    launched.clear()
+    ok = core.fast_command(phrase)
+    assert not launched, (phrase, launched)
+assert core.fast_command("громкость 40") and ("vol", 40) in launched
+assert core.fast_command("который час")
+print("быстрые команды: ок")
+
+# Похожее на «Джарвис» слово тоже будит
+events.clear()
+core.cmd_q.put = lambda c: events.append({"type": "cmd", "c": c})
+core.on_heard("Джарвиз, открой блокнот")
+assert events and events[-1].get("c") == "открой блокнот", events
+print("нечёткое слово-активатор: ок")
+
 # Джарвис не может сам выключить звук
 core.current_command = "расскажи анекдот"
 assert core.tools.call("mute", {"state": True}).startswith("Отказано")

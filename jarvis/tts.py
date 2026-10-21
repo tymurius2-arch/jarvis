@@ -108,22 +108,30 @@ BACKUP_VOICES = ["en-US-BrianMultilingualNeural", "en-US-AndrewMultilingualNeura
 
 
 async def _edge_retry(text, voice, rate, pitch) -> bytes:
-    """Пробуем: выбранный голос → он же без смены скорости/высоты → запасные мужские голоса Microsoft."""
-    variants = [(voice, rate, pitch), (voice, "+0%", "+0Hz")]
-    variants += [(v, rate, pitch) for v in BACKUP_VOICES if v != voice]
-    last = None
-    seen = set()
-    for v, r, p in variants:
-        if (v, r, p) in seen:
-            continue
-        seen.add((v, r, p))
+    """Выбранный голос и запасной (Brian) запрашиваются одновременно.
+    Если выбранный справился — звучит он; если нет — запасной уже готов, ждать не нужно."""
+    backups = [v for v in BACKUP_VOICES if v != voice]
+    main = asyncio.create_task(_edge(text, voice, rate, pitch))
+    spare = asyncio.create_task(_edge(text, backups[0], rate, pitch)) if backups else None
+    try:
         try:
-            audio = await _edge(text, v, r, p)
+            audio = await main
             if audio:
                 return audio
         except Exception as e:
             last = e
-    raise last or RuntimeError("Голос Microsoft не прислал звук")
+        for i, v in enumerate(backups):
+            try:
+                audio = await spare if i == 0 else await _edge(text, v, rate, pitch)
+                if audio:
+                    return audio
+            except Exception as e:
+                last = e
+        raise last
+    finally:
+        for t in (main, spare):
+            if t and not t.done():
+                t.cancel()
 
 
 def synthesize(text: str, cfg: dict) -> bytes:

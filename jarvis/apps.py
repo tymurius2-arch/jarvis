@@ -6,7 +6,7 @@ import subprocess
 import threading
 from pathlib import Path
 
-from .textutil import normalize
+from .textutil import best_match, normalize
 
 # Как люди называют программы -> что запускать
 APP_ALIASES = {
@@ -108,6 +108,17 @@ class AppIndex:
         if match:
             return self.items[match[0]]
         return None
+
+
+    def find_strict(self, query: str) -> str | None:
+        q = normalize(query)
+        if q in APP_ALIASES:
+            return APP_ALIASES[q]
+        self._ready.wait(timeout=5)
+        if q in self.items:
+            return self.items[q]
+        name = best_match(q, list(self.items))
+        return self.items[name] if name else None
 
 
 def start(target: str, args: str = "") -> None:

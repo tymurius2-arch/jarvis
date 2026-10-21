@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 
-from .textutil import normalize
+from .textutil import best_match, normalize
 
 # Народные названия игр -> часть настоящего названия или appid.
 GAME_ALIASES = {
@@ -28,6 +28,8 @@ GAME_ALIASES = {
     "валхейм": 892970,
     "euro truck": 227300, "етс": 227300, "евро трак": 227300, "дальнобойщики": 227300,
     "сатисфактори": 526870, "майнкрафт": None,
+    "геометри": 322170, "геометрия даш": 322170, "геометри даш": 322170, "геометри дэш": 322170,
+    "джеометри": 322170, "geometry": 322170, "гд": 322170, "геометрию": 322170,
     "дбд": 381210, "дед бай дейлайт": 381210,
     "вар тандер": 236390, "вартандер": 236390, "war thunder": 236390,
     "танки": 1407200, "мир танков": 1407200,
@@ -108,6 +110,21 @@ def find_game(query: str) -> dict | None:
     if match:
         return names[match[0]]
     return None
+
+
+def find_installed(query: str) -> dict | None:
+    """Только установленные игры и только уверенное совпадение — для мгновенного запуска без нейросети."""
+    games = installed_games()
+    if not games:
+        return None
+    q = normalize(query)
+    ids = {g["appid"]: g for g in games}
+    for alias, appid in sorted(GAME_ALIASES.items(), key=lambda kv: -len(kv[0])):
+        end = "" if len(alias) >= 4 else r"(\s|$)"
+        if appid in ids and re.search(rf"(^|\s){re.escape(alias)}{end}", q):
+            return ids[appid]
+    name = best_match(q, [g["name"] for g in games])
+    return next((g for g in games if g["name"] == name), None) if name else None
 
 
 def launch(appid: int) -> None:

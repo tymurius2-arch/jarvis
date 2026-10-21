@@ -1,4 +1,5 @@
 """Ядро: слышит фразу -> протокол или нейросеть -> действие -> ответ голосом."""
+import difflib
 import queue
 import random
 import re
@@ -127,6 +128,14 @@ class Core:
             if m:
                 wake = m
                 break
+        if not wake:
+            # Похожие слова: «джарвиз», «чарвис», «jarvis»… в первых двух словах
+            words = norm.split()
+            for wd in words[:2]:
+                if len(wd) >= 5 and any(difflib.SequenceMatcher(None, wd, normalize(w)).ratio() >= 0.78
+                                        for w in self.settings["wake_words"]):
+                    wake = re.search(rf"(^|\s){re.escape(wd)}", norm)
+                    break
         if wake:
             command = norm[wake.end():].strip()
             before = norm[:wake.start()].strip()
@@ -136,6 +145,8 @@ class Core:
             command = norm
         else:
             self.log(f"(фон) {text}", "muted")
+            if len(norm.split()) >= 2:
+                self.notice(f"🙉 Услышал «{text[:60]}», но без слова «Джарвис» — пропускаю", every=15)
             self.emit({"type": "state", "state": "idle"})
             return
         self.chat("user", text)
@@ -188,8 +199,74 @@ class Core:
         if proto:
             self.run_protocol(proto)
             return
-        # 3. Нейросеть
+        # 3. Простые команды — мгновенно, без нейросети
+        t0 = time.time()
+        if self.fast_command(command):
+            self.log(f"Быстрая команда за {time.time() - t0:.2f} с", "info")
+            return
+        # 4. Нейросеть
         self.handle_ai(command)
+
+    LAUNCH_RE = re.compile(r"^(?:ну\s+|а\s+)?(запусти|запускай|открой|открывай|замути|замутим|врубай|вруби|включи|"
+                           r"поставь|давай|го|launch|open|start)\s+(?:мне\s+|нам\s+|пожалуйста\s+|игру\s+|"
+                           r"программу\s+|приложение\s+|игрушку\s+)*(.+?)(?:\s+пожалуйста)?$")
+
+    def fast_command(self, command: str) -> bool:
+        """Частые команды без нейросети: запуск игр/программ, громкость, музыка, время."""
+        from . import apps, steam
+
+        c = normalize(command)
+        t = self.settings["user_title"]
+        m = self.LAUNCH_RE.match(c)
+        if m:
+            verb, name = m.group(1), m.group(2).strip()
+            game = steam.find_installed(name)
+            if game:
+                steam.launch(game["appid"])
+                self.say(f"Запускаю {game['name']}, {t}.")
+                return True
+            if verb not in ("включи", "поставь", "давай", "го"):  # «включи музыку» — это не программа
+                target = self.tools.apps.find_strict(name)
+                if target:
+                    apps.start(target)
+                    self.say(f"Открываю, {t}.")
+                    return True
+            return False
+        m = re.search(r"громкость\D{0,12}(\d{1,3})", c)
+        if m:
+            system.set_volume(int(m.group(1)))
+            self.say(f"Громкость {m.group(1)} процентов.")
+            return True
+        if re.fullmatch(r"(сделай\s+)?(по)?громче( пожалуйста)?", c):
+            system.change_volume(+15)
+            return True
+        if re.fullmatch(r"(сделай\s+)?(по)?тише( пожалуйста)?", c):
+            system.change_volume(-15)
+            return True
+        if re.fullmatch(r"(выключи|убери|отключи) звук|без звука|заглуши( звук)?", c):
+            system.mute(True)
+            return True
+        if re.fullmatch(r"(включи|верни) звук", c):
+            system.mute(False)
+            self.say("Звук включён.")
+            return True
+        if re.fullmatch(r"(поставь на )?пауз[ау]|стоп|продолжи|продолжай|играй", c):
+            system.media("play_pause")
+            return True
+        if re.fullmatch(r"(включи |давай )?(следующ\w+|некст)( трек| песн\w+| видео)?", c):
+            system.media("next")
+            return True
+        if re.fullmatch(r"(включи |давай )?(предыдущ\w+)( трек| песн\w+| видео)?", c):
+            system.media("previous")
+            return True
+        if re.search(r"(сколько|который)\s+(сейчас\s+)?(времени|час)", c):
+            self.say(f"Сейчас {system.now().split(',')[0]}, {t}.")
+            return True
+        if re.search(r"(какое|какой)\s+сегодня\s+(число|день|дата)|какая сегодня дата", c):
+            parts = system.now().split(", ")
+            self.say(f"Сегодня {parts[2]}, {parts[1]}.")
+            return True
+        return False
 
     def handle_ai(self, command: str):
         if not self.brain.ready():
@@ -307,6 +384,9 @@ class Core:
     # ---------- запуск ----------
     def start(self):
         self.listener.start()
+        if self.settings["llm"]["provider"] == "ollama":
+            self.notice("🐢 Нейросеть Ollama работает на вашем компьютере — она медленнее и глупее облачных. "
+                        "Для скорости выберите в настройках Google Gemini или OpenRouter (gemini-3.8-flash).")
         greet = time.localtime().tm_hour
         part = "Доброе утро" if 5 <= greet < 12 else "Добрый день" if greet < 18 else "Добрый вечер" if greet < 23 else "Доброй ночи"
         threading.Timer(1.5, lambda: self.say(f"{part}, {self.settings['user_title']}. Все системы в норме.")).start()
