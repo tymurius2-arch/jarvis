@@ -31,6 +31,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Диагностика голоса Microsoft
+        continue-on-error: true
+        run: python tests/voice_diag.py
+
       - name: Проверка (протоколы, голос, инструменты)
         run: python tests/smoke_test.py
 
