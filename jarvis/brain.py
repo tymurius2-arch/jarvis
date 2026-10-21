@@ -110,9 +110,14 @@ class Brain:
             calls = msg.tool_calls or []
             entry = {"role": "assistant", "content": msg.content or ""}
             if calls:
-                entry["tool_calls"] = [{"id": c.id, "type": "function",
-                                        "function": {"name": c.function.name, "arguments": c.function.arguments or "{}"}}
-                                       for c in calls]
+                # Сохраняем вызовы целиком: Gemini кладёт туда «thought_signature»,
+                # без которой следующий запрос падает с ошибкой 400.
+                entry["tool_calls"] = []
+                for c in calls:
+                    d = c.model_dump(exclude_none=True) if hasattr(c, "model_dump") else {}
+                    d.update({"id": c.id, "type": "function"})
+                    d["function"] = {"name": c.function.name, "arguments": c.function.arguments or "{}"}
+                    entry["tool_calls"].append(d)
             self.history.append(entry)
             if not calls:
                 return (msg.content or "").strip()
