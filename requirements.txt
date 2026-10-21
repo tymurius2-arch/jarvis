@@ -1,0 +1,19 @@
+pywebview>=5.3
+edge-tts>=7.0
+miniaudio>=1.61
+sounddevice>=0.5
+numpy>=1.26
+requests>=2.31
+openai>=1.50
+anthropic>=0.40
+SpeechRecognition>=3.14
+standard-aifc; python_version >= "3.13"
+audioop-lts; python_version >= "3.13"
+psutil>=5.9
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+pyperclip>=1.9
+pycaw>=20240316; sys_platform == "win32"
+comtypes>=1.4; sys_platform == "win32"
+pystray>=0.19
+pillow>=10.0

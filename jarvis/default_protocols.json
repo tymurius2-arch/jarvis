@@ -1,0 +1,96 @@
+[
+  {
+    "id": "beamng",
+    "name": "Бимка",
+    "icon": "🚗",
+    "triggers": ["бимк", "бимн", "бименджи", "бим энджи", "бим нг", "beamng", "бимэнджи"],
+    "enabled": true,
+    "confirm": false,
+    "actions": [
+      {"type": "say", "value": "Запускаю Бим Энджи Драйв, сэр. Пристегнитесь."},
+      {"type": "steam", "value": "284160"}
+    ]
+  },
+  {
+    "id": "gaming",
+    "name": "Игровой режим",
+    "icon": "🎮",
+    "triggers": ["игровой режим", "режим игры", "протокол игра", "погнали играть"],
+    "enabled": true,
+    "confirm": false,
+    "actions": [
+      {"type": "say", "value": "Активирую игровой режим."},
+      {"type": "open_app", "value": "Steam"},
+      {"type": "open_app", "value": "Discord"},
+      {"type": "wait", "value": "3"},
+      {"type": "volume", "value": "80"},
+      {"type": "say", "value": "Все системы готовы. Удачной охоты, сэр."}
+    ]
+  },
+  {
+    "id": "work",
+    "name": "Режим работы",
+    "icon": "💼",
+    "triggers": ["режим работы", "рабочий режим", "протокол работа"],
+    "enabled": true,
+    "confirm": false,
+    "actions": [
+      {"type": "volume", "value": "30"},
+      {"type": "open_app", "value": "Telegram"},
+      {"type": "open_url", "value": "https://mail.google.com"},
+      {"type": "say", "value": "Рабочее пространство готово. Хорошего дня, сэр."}
+    ]
+  },
+  {
+    "id": "party",
+    "name": "Протокол «Вечеринка»",
+    "icon": "🎉",
+    "triggers": ["вечеринк", "house party", "домашняя вечеринка", "врубай музыку"],
+    "enabled": true,
+    "confirm": false,
+    "actions": [
+      {"type": "say", "value": "Протокол «Домашняя вечеринка» активирован."},
+      {"type": "volume", "value": "70"},
+      {"type": "open_url", "value": "https://music.youtube.com"}
+    ]
+  },
+  {
+    "id": "clean-slate",
+    "name": "Протокол «Чистый лист»",
+    "icon": "🧹",
+    "triggers": ["чистый лист", "clean slate", "сверни все", "сверни всё"],
+    "enabled": true,
+    "confirm": false,
+    "actions": [
+      {"type": "hotkey", "value": "win+d"},
+      {"type": "say", "value": "Чистый лист, сэр."}
+    ]
+  },
+  {
+    "id": "guests",
+    "name": "Протокол «Гости»",
+    "icon": "🚪",
+    "triggers": ["протокол гости", "пришли гости", "мама идет", "мама идёт"],
+    "enabled": true,
+    "confirm": false,
+    "actions": [
+      {"type": "hotkey", "value": "win+d"},
+      {"type": "volume", "value": "0"},
+      {"type": "open_url", "value": "https://www.wikipedia.org"}
+    ]
+  },
+  {
+    "id": "night",
+    "name": "Спокойной ночи",
+    "icon": "🌙",
+    "triggers": ["спокойной ночи", "протокол сон", "я спать"],
+    "enabled": true,
+    "confirm": true,
+    "actions": [
+      {"type": "say", "value": "Спокойной ночи, сэр. Перевожу системы в режим сна."},
+      {"type": "volume", "value": "0"},
+      {"type": "wait", "value": "3"},
+      {"type": "power", "value": "sleep"}
+    ]
+  }
+]

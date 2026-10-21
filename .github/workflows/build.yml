@@ -1,0 +1,62 @@
+name: Сборка Jarvis.exe
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка библиотек
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Проверка (протоколы, голос, инструменты)
+        run: python tests/smoke_test.py
+
+      - name: Сборка
+        run: >
+          pyinstaller --noconfirm --windowed --name Jarvis --icon assets/jarvis.ico
+          --add-data "jarvis/ui;jarvis/ui"
+          --add-data "jarvis/default_protocols.json;jarvis"
+          --collect-all webview
+          --collect-data speech_recognition
+          --collect-submodules pycaw
+          --collect-submodules comtypes
+          --hidden-import pystray._win32
+          --hidden-import standard_aifc
+          jarvis.py
+
+      - name: Упаковка
+        run: |
+          Copy-Item README.md dist/Jarvis/README.md
+          Compress-Archive -Path dist/Jarvis -DestinationPath Jarvis-Windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Windows
+          path: Jarvis-Windows.zip
+
+      - name: Публикация в Releases
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Джарвис v1.0.${{ github.run_number }}
+          make_latest: true
+          body: |
+            Скачайте **Jarvis-Windows.zip**, распакуйте и запустите **Jarvis.exe**.
+            Если Windows покажет синее окно «Защитник Windows» — нажмите «Подробнее» → «Выполнить в любом случае».
+          files: Jarvis-Windows.zip

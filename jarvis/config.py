@@ -1,0 +1,150 @@
+"""Настройки Джарвиса: хранятся в %APPDATA%\\Jarvis\\settings.json."""
+import copy
+import json
+import os
+import sys
+import threading
+from pathlib import Path
+
+APP_NAME = "Jarvis"
+
+
+def resource_dir() -> Path:
+    """Папка с файлами программы (работает и в .exe, и из исходников)."""
+    if getattr(sys, "frozen", False):
+        return Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent)) / "jarvis"
+    return Path(__file__).resolve().parent
+
+
+def data_dir() -> Path:
+    base = os.environ.get("APPDATA") or str(Path.home() / ".config")
+    path = Path(base) / APP_NAME
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+# Готовые провайдеры нейросетей. Все, кроме Claude, говорят на "OpenAI-совместимом" языке.
+PROVIDERS = {
+    "groq": {
+        "title": "Groq — бесплатно и очень быстро (рекомендую)",
+        "base_url": "https://api.groq.com/openai/v1",
+        "models": ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"],
+        "key_url": "https://console.groq.com/keys",
+    },
+    "gemini": {
+        "title": "Google Gemini — есть бесплатный лимит",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "models": ["gemini-flash-latest", "gemini-pro-latest", "gemini-flash-lite-latest"],
+        "key_url": "https://aistudio.google.com/apikey",
+    },
+    "anthropic": {
+        "title": "Claude (Anthropic) — самый умный, платный",
+        "base_url": "",
+        "models": ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"],
+        "key_url": "https://console.anthropic.com/settings/keys",
+    },
+    "openrouter": {
+        "title": "OpenRouter — сотни моделей по одному ключу",
+        "base_url": "https://openrouter.ai/api/v1",
+        "models": ["openai/gpt-oss-120b", "google/gemini-flash-latest", "anthropic/claude-haiku-5-5"],
+        "key_url": "https://openrouter.ai/keys",
+    },
+    "ollama": {
+        "title": "Ollama — нейросеть прямо на твоём компьютере, без интернета",
+        "base_url": "http://localhost:11434/v1",
+        "models": ["qwen3:8b", "llama3.1:8b", "gpt-oss:20b"],
+        "key_url": "https://ollama.com/download",
+    },
+    "custom": {
+        "title": "Другой (OpenAI-совместимый адрес)",
+        "base_url": "",
+        "models": [],
+        "key_url": "",
+    },
+}
+
+VOICES = [
+    {"id": "ru-RU-DmitryNeural", "title": "Дмитрий — русский, мужской (по умолчанию)"},
+    {"id": "en-GB-RyanNeural", "title": "Ryan — британский, как в фильме (English)"},
+    {"id": "en-GB-ThomasNeural", "title": "Thomas — британский, мягкий (English)"},
+    {"id": "uk-UA-OstapNeural", "title": "Остап — украинский, мужской"},
+    {"id": "en-US-GuyNeural", "title": "Guy — американский (English)"},
+    {"id": "en-US-AndrewMultilingualNeural", "title": "Andrew — говорит на любом языке"},
+    {"id": "de-DE-FlorianMultilingualNeural", "title": "Florian — говорит на любом языке"},
+]
+
+DEFAULTS = {
+    "user_title": "сэр",
+    "language": "ru",
+    "wake_words": ["джарвис", "jarvis", "джервис", "жарвис", "джарвиз", "джарвес", "дарвис", "джарвіс"],
+    "require_wake_word": True,
+    "follow_up_seconds": 8,
+    "llm": {"provider": "groq", "api_key": "", "model": "openai/gpt-oss-120b", "base_url": ""},
+    "stt": {"provider": "auto", "device": None, "sensitivity": 60},
+    "tts": {
+        "provider": "edge",
+        "voice": "ru-RU-DmitryNeural",
+        "rate": "+8%",
+        "pitch": "-4Hz",
+        "fx": True,
+        "volume": 100,
+        "elevenlabs_key": "",
+        "elevenlabs_voice": "",
+    },
+    "listening": True,
+    "allow_shell": True,
+    "confirm_power": True,
+    "autostart": False,
+    "minimize_to_tray": True,
+    "first_run": True,
+}
+
+
+def _merge(base, extra):
+    out = copy.deepcopy(base)
+    for k, v in (extra or {}).items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
+class Settings:
+    def __init__(self):
+        self.path = data_dir() / "settings.json"
+        self._lock = threading.Lock()
+        self.data = copy.deepcopy(DEFAULTS)
+        if self.path.exists():
+            try:
+                self.data = _merge(DEFAULTS, json.loads(self.path.read_text("utf-8")))
+            except Exception:
+                pass
+        # Ключ можно задать и через переменную окружения.
+        if not self.data["llm"]["api_key"]:
+            env = {"groq": "GROQ_API_KEY", "gemini": "GEMINI_API_KEY", "anthropic": "ANTHROPIC_API_KEY",
+                   "openrouter": "OPENROUTER_API_KEY"}.get(self.data["llm"]["provider"])
+            if env and os.environ.get(env):
+                self.data["llm"]["api_key"] = os.environ[env]
+
+    def get(self, key, default=None):
+        return self.data.get(key, default)
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def update(self, patch: dict):
+        with self._lock:
+            self.data = _merge(self.data, patch)
+            self.save()
+
+    def save(self):
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=2), "utf-8")
+        tmp.replace(self.path)
+
+    def groq_key(self) -> str:
+        """Ключ Groq нужен ещё и для распознавания речи через Whisper."""
+        if self.data["llm"]["provider"] == "groq" and self.data["llm"]["api_key"]:
+            return self.data["llm"]["api_key"]
+        return self.data["stt"].get("groq_key") or os.environ.get("GROQ_API_KEY", "")

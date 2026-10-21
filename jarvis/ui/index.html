@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S.</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="grid-bg"></div>
+
+<aside class="side">
+  <div class="brand">
+    <div class="brand-dot"></div>
+    <div>
+      <div class="brand-name">J.A.R.V.I.S.</div>
+      <div class="brand-sub">Just A Rather Very Intelligent System</div>
+    </div>
+  </div>
+  <nav>
+    <button class="nav active" data-page="home"><span>◎</span>Главная</button>
+    <button class="nav" data-page="protocols"><span>⚡</span>Протоколы</button>
+    <button class="nav" data-page="games"><span>🎮</span>Игры Steam</button>
+    <button class="nav" data-page="settings"><span>⚙</span>Настройки</button>
+    <button class="nav" data-page="log"><span>☰</span>Журнал</button>
+  </nav>
+  <div class="side-status">
+    <div class="stat"><span>Нейросеть</span><b id="st-ai">—</b></div>
+    <div class="stat"><span>Микрофон</span><b id="st-mic">—</b></div>
+    <div class="stat"><span>Голос</span><b id="st-voice">—</b></div>
+    <label class="switch big">
+      <input type="checkbox" id="listen-toggle" checked>
+      <span class="slider"></span>
+      <em>Слушать «Джарвис»</em>
+    </label>
+  </div>
+</aside>
+
+<main>
+  <!-- ГЛАВНАЯ -->
+  <section class="page active" id="page-home">
+    <div class="home">
+      <div class="reactor-wrap">
+        <canvas id="reactor" width="520" height="520"></canvas>
+        <div class="reactor-text">
+          <div id="state-label">ИНИЦИАЛИЗАЦИЯ</div>
+          <div id="state-hint">Скажите «Джарвис» или нажмите на ядро</div>
+        </div>
+        <div class="hud-corner tl"></div><div class="hud-corner tr"></div>
+        <div class="hud-corner bl"></div><div class="hud-corner br"></div>
+        <div class="hud-clock" id="clock">00:00</div>
+        <div class="hud-date" id="date"></div>
+      </div>
+      <div class="chat-panel">
+        <div class="panel-head">
+          <span>ДИАЛОГ</span>
+          <button class="ghost small" id="clear-chat">Очистить</button>
+        </div>
+        <div class="chat" id="chat"></div>
+        <div id="confirm-bar" class="confirm hidden">
+          <span id="confirm-text"></span>
+          <button class="primary small" id="confirm-yes">Да</button>
+          <button class="ghost small" id="confirm-no">Нет</button>
+        </div>
+        <form class="input-row" id="input-form">
+          <button type="button" class="mic-btn" id="mic-btn" title="Сказать команду без слова «Джарвис»">🎙</button>
+          <input id="input" autocomplete="off" placeholder="Напишите команду или вопрос…">
+          <button class="primary" type="submit">➤</button>
+        </form>
+        <div class="quick" id="quick"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ПРОТОКОЛЫ -->
+  <section class="page" id="page-protocols">
+    <div class="page-head">
+      <div>
+        <h1>Протоколы</h1>
+        <p>Скажите фразу — Джарвис выполнит цепочку действий. Например: «Джарвис, замути бимку».</p>
+      </div>
+      <div class="row">
+        <button class="ghost" id="proto-import">Импорт</button>
+        <button class="ghost" id="proto-export">Экспорт</button>
+        <button class="primary" id="proto-new">+ Новый протокол</button>
+      </div>
+    </div>
+    <div class="test-row">
+      <input id="phrase-test" placeholder="Проверить фразу: например «замути бимку»">
+      <span id="phrase-result"></span>
+    </div>
+    <div class="cards" id="proto-list"></div>
+  </section>
+
+  <!-- ИГРЫ -->
+  <section class="page" id="page-games">
+    <div class="page-head">
+      <div>
+        <h1>Игры Steam</h1>
+        <p>Установленные игры. Нажмите «Протокол», чтобы запускать игру своей фразой.</p>
+      </div>
+      <div class="row">
+        <input id="game-filter" placeholder="Поиск…">
+        <button class="ghost" id="games-refresh">Обновить</button>
+      </div>
+    </div>
+    <div class="cards games" id="games-list"></div>
+  </section>
+
+  <!-- НАСТРОЙКИ -->
+  <section class="page" id="page-settings">
+    <div class="page-head">
+      <div><h1>Настройки</h1><p>Всё сохраняется автоматически.</p></div>
+    </div>
+    <div class="settings">
+      <div class="card">
+        <h2>🧠 Нейросеть</h2>
+        <label>Сервис<select id="s-provider"></select></label>
+        <label>Ключ (API key)
+          <div class="row"><input id="s-key" type="password" placeholder="Вставьте ключ сюда">
+          <button class="ghost small" id="s-key-get">Получить ключ</button></div>
+        </label>
+        <label>Модель<input id="s-model" list="s-models"><datalist id="s-models"></datalist></label>
+        <label id="s-base-wrap" class="hidden">Адрес сервера<input id="s-base" placeholder="http://localhost:1234/v1"></label>
+        <div class="row"><button class="primary small" id="s-test-ai">Проверить связь</button><span id="s-ai-result" class="muted"></span></div>
+        <p class="hint">Groq — бесплатно: войдите через Google на console.groq.com → «Create API Key» → скопируйте и вставьте сюда. Этот же ключ даёт Джарвису отличный слух (Whisper).</p>
+      </div>
+
+      <div class="card">
+        <h2>🔊 Голос</h2>
+        <label>Голос<select id="s-voice"></select></label>
+        <div class="row2">
+          <label>Скорость<input id="s-rate" placeholder="+8%"></label>
+          <label>Высота<input id="s-pitch" placeholder="-4Hz"></label>
+        </div>
+        <label>Громкость голоса <b id="s-vol-v"></b><input type="range" id="s-vol" min="20" max="150"></label>
+        <label class="switch"><input type="checkbox" id="s-fx"><span class="slider"></span><em>Эффект «компьютерного» голоса</em></label>
+        <details>
+          <summary>Свой голос через ElevenLabs</summary>
+          <p class="hint">В библиотеке голосов ElevenLabs можно выбрать любой голос и вставить его Voice ID.</p>
+          <label>Ключ ElevenLabs<input id="s-el-key" type="password"></label>
+          <label>Voice ID<input id="s-el-voice"></label>
+          <label class="switch"><input type="checkbox" id="s-el-on"><span class="slider"></span><em>Использовать ElevenLabs</em></label>
+        </details>
+        <button class="primary small" id="s-test-voice">▶ Проверить голос</button>
+      </div>
+
+      <div class="card">
+        <h2>🎙 Слух</h2>
+        <label>Микрофон<select id="s-device"></select></label>
+        <label>Чувствительность <b id="s-sens-v"></b><input type="range" id="s-sens" min="0" max="100"></label>
+        <div class="meter"><div id="mic-meter"></div></div>
+        <label>Распознавание речи<select id="s-stt">
+          <option value="auto">Авто (Whisper, если есть ключ Groq, иначе Google)</option>
+          <option value="groq">Whisper через Groq — точнее всего</option>
+          <option value="google">Google — без ключа</option>
+        </select></label>
+        <label>Язык<select id="s-lang"><option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option></select></label>
+        <label>Слова-активаторы (через запятую)<input id="s-wake"></label>
+        <label class="switch"><input type="checkbox" id="s-require"><span class="slider"></span><em>Реагировать только после слова «Джарвис»</em></label>
+      </div>
+
+      <div class="card">
+        <h2>🛡 Система</h2>
+        <label>Как обращаться ко мне<input id="s-title" placeholder="сэр"></label>
+        <label class="switch"><input type="checkbox" id="s-shell"><span class="slider"></span><em>Разрешить команды PowerShell (полный контроль ПК)</em></label>
+        <label class="switch"><input type="checkbox" id="s-confirm"><span class="slider"></span><em>Спрашивать перед выключением/перезагрузкой</em></label>
+        <label class="switch"><input type="checkbox" id="s-autostart"><span class="slider"></span><em>Запускать вместе с Windows</em></label>
+        <label class="switch"><input type="checkbox" id="s-tray"><span class="slider"></span><em>При закрытии прятать в трей (продолжает слушать)</em></label>
+        <div class="row"><button class="ghost small" id="s-open-dir">Открыть папку с данными</button>
+        <button class="ghost small danger" id="s-quit">Выключить Джарвиса</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ЖУРНАЛ -->
+  <section class="page" id="page-log">
+    <div class="page-head"><div><h1>Журнал</h1><p>Что Джарвис слышал и делал.</p></div></div>
+    <div class="log" id="log"></div>
+  </section>
+</main>
+
+<!-- Редактор протокола -->
+<div class="modal hidden" id="editor">
+  <div class="modal-box">
+    <div class="panel-head"><span id="ed-title">ПРОТОКОЛ</span><button class="ghost small" id="ed-close">✕</button></div>
+    <div class="ed-body">
+      <div class="row2">
+        <label>Название<input id="ed-name" placeholder="Например: Бимка"></label>
+        <label>Значок<input id="ed-icon" maxlength="4" placeholder="🚗"></label>
+      </div>
+      <label>Фразы-активаторы (через запятую). Достаточно начала слова: «бимк» поймает «бимку», «бимка».
+        <input id="ed-triggers" placeholder="бимк, beamng, замути бимку"></label>
+      <div class="row">
+        <label class="switch"><input type="checkbox" id="ed-enabled"><span class="slider"></span><em>Включён</em></label>
+        <label class="switch"><input type="checkbox" id="ed-confirm"><span class="slider"></span><em>Спрашивать подтверждение</em></label>
+      </div>
+      <div class="panel-head sub"><span>ДЕЙСТВИЯ</span>
+        <div class="row"><select id="ed-add-type"></select><button class="primary small" id="ed-add">+ Добавить</button></div>
+      </div>
+      <div id="ed-actions"></div>
+    </div>
+    <div class="ed-foot">
+      <button class="ghost danger" id="ed-delete">Удалить</button>
+      <div class="row">
+        <button class="ghost" id="ed-run">▶ Выполнить</button>
+        <button class="primary" id="ed-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
