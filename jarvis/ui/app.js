@@ -29,6 +29,7 @@ async function init() {
   S.history.forEach(addMsg);
   if (!S.history.length) showEmpty();
   setState(S.settings.listening ? "idle" : "off");
+  if (S.settings.first_run && !S.settings.autostart) $("#autostart-bar").classList.remove("hidden");
   if (!S.ai_ready) setTimeout(() => toast("Подключите нейросеть: Настройки → ключ Groq (бесплатно)"), 2500);
 }
 
@@ -131,6 +132,13 @@ function renderQuick() {
 }
 function showConfirm(text) { $("#confirm-text").textContent = text + " — подтверждаете?"; $("#confirm-bar").classList.remove("hidden"); }
 function hideConfirm() { $("#confirm-bar").classList.add("hidden"); }
+function answerAutostart(on) {
+  $("#autostart-bar").classList.add("hidden");
+  save({ autostart: on, first_run: false }, true);
+  toast(on ? "Готово: Джарвис будет включаться вместе с Windows" : "Хорошо. Включить можно в Настройках или у значка возле часов");
+}
+$("#autostart-yes").onclick = () => answerAutostart(true);
+$("#autostart-no").onclick = () => answerAutostart(false);
 $("#confirm-yes").onclick = () => { api.send_text("да"); hideConfirm(); };
 $("#confirm-no").onclick = () => { api.send_text("нет"); hideConfirm(); };
 
@@ -485,7 +493,7 @@ function mockApi() {
       llm: { provider: "groq", api_key: "", model: "openai/gpt-oss-120b", base_url: "" },
       stt: { provider: "auto", device: null, sensitivity: 60 },
       tts: { provider: "edge", voice: "ru-RU-DmitryNeural", rate: "+8%", pitch: "-4Hz", fx: true, volume: 100 },
-      allow_shell: true, confirm_power: true, autostart: false, minimize_to_tray: true },
+      allow_shell: true, confirm_power: true, autostart: false, minimize_to_tray: true, first_run: true },
     providers: { groq: { title: "Groq — бесплатно и очень быстро", models: ["openai/gpt-oss-120b"], key_url: "x" } },
     voices: [{ id: "ru-RU-DmitryNeural", title: "Дмитрий — русский" }],
     action_types: { say: "Сказать фразу", steam: "Запустить игру Steam", wait: "Пауза" },

@@ -27,26 +27,34 @@ def _unblock(folder):
         pass
 
 
-def _desktop_shortcut():
-    """Первый запуск из папки с встроенным Python: ярлык «Джарвис» на рабочем столе."""
+def _shortcuts():
+    """Ярлыки «Джарвис» на рабочем столе и в меню «Пуск» (с нашим значком).
+    Пересоздаются, если папку с Джарвисом перенесли."""
     pyw = os.path.join(HERE, "python", "pythonw.exe")
     if not os.path.exists(pyw):
         return
     marker = os.path.join(HERE, ".shortcut")
-    if os.path.exists(marker):
-        return
+    try:
+        if open(marker, encoding="utf-8").read() == HERE + "|2":
+            return
+    except OSError:
+        pass
     import subprocess
 
-    lnk = os.path.join(os.path.expanduser("~"), "Desktop", "Джарвис.lnk")
-    ps = ("$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:LNK); $s.TargetPath = $env:PYW; "
+    appdata = os.environ.get("APPDATA", "")
+    links = [os.path.join(os.path.expanduser("~"), "Desktop", "Джарвис.lnk"),
+             os.path.join(appdata, "Microsoft", "Windows", "Start Menu", "Programs", "Джарвис.lnk")]
+    ps = ("$sh = New-Object -ComObject WScript.Shell; "
+          "foreach ($l in $env:LNKS.Split('|')) { $s = $sh.CreateShortcut($l); $s.TargetPath = $env:PYW; "
           "$s.Arguments = '\"' + $env:SCRIPT + '\"'; $s.WorkingDirectory = $env:HERE; "
-          "$s.IconLocation = $env:ICON; $s.Description = 'J.A.R.V.I.S.'; $s.Save()")
-    env = dict(os.environ, LNK=lnk, PYW=pyw, SCRIPT=os.path.join(HERE, "jarvis.py"), HERE=HERE,
+          "$s.IconLocation = $env:ICON + ',0'; $s.Description = 'J.A.R.V.I.S. — голосовой помощник'; $s.Save() }")
+    env = dict(os.environ, LNKS="|".join(links), PYW=pyw, SCRIPT=os.path.join(HERE, "jarvis.py"), HERE=HERE,
                ICON=os.path.join(HERE, "assets", "jarvis.ico"))
     try:
         subprocess.run(["powershell", "-NoProfile", "-Command", ps], env=env, timeout=20,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        open(marker, "w").close()
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write(HERE + "|2")
     except Exception:
         pass
 
@@ -95,7 +103,13 @@ if __name__ == "__main__":
     if "--selftest" in sys.argv:
         _selftest()
     if sys.platform == "win32":
-        _desktop_shortcut()
+        try:  # своя «личность» в панели задач — там будет значок Джарвиса, а не Python
+            import ctypes
+
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Tymurius.Jarvis")
+        except Exception:
+            pass
+        _shortcuts()
     from jarvis.app import main
 
     main()

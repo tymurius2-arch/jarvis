@@ -168,8 +168,11 @@ def set_autostart(on: bool):
     if getattr(sys, "frozen", False):
         cmd = f'"{sys.executable}" --minimized'
     else:
-        pyw = sys.executable.replace("python.exe", "pythonw.exe")
-        cmd = f'"{pyw}" "{os.path.abspath(sys.argv[0])}" --minimized'
+        pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+        if not os.path.exists(pyw):
+            pyw = sys.executable
+        script = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "jarvis.py")
+        cmd = f'"{pyw}" "{script}" --minimized'
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0,
                         winreg.KEY_SET_VALUE) as key:
         if on:
@@ -179,6 +182,30 @@ def set_autostart(on: bool):
                 winreg.DeleteValue(key, "Jarvis")
             except FileNotFoundError:
                 pass
+
+
+def _set_window_icon():
+    """Значок реактора в заголовке окна и в панели задач (вместо значка Python)."""
+    if os.name != "nt":
+        return
+    import ctypes
+
+    ico = str(resource_dir().parent / "assets" / "jarvis.ico")
+    if not os.path.exists(ico):
+        return
+    user32 = ctypes.windll.user32
+    user32.FindWindowW.restype = ctypes.c_void_p
+    user32.LoadImageW.restype = ctypes.c_void_p
+    user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+    for _ in range(100):
+        hwnd = user32.FindWindowW(None, "J.A.R.V.I.S.")
+        if hwnd:
+            big = user32.LoadImageW(None, ico, 1, 256, 256, 0x10)    # IMAGE_ICON, LR_LOADFROMFILE
+            small = user32.LoadImageW(None, ico, 1, 32, 32, 0x10)
+            user32.SendMessageW(hwnd, 0x80, 1, big)                  # WM_SETICON, ICON_BIG
+            user32.SendMessageW(hwnd, 0x80, 0, small)                # ICON_SMALL
+            return
+        time.sleep(0.1)
 
 
 def _tray(window, core):
@@ -197,9 +224,17 @@ def _tray(window, core):
             core.settings.update({"listening": not core.settings["listening"]})
             core.emit({"type": "settings", "settings": core.settings.data})
 
+        def toggle_autostart(icon, item):
+            on = not core.settings["autostart"]
+            core.settings.update({"autostart": on})
+            set_autostart(on)
+            core.emit({"type": "settings", "settings": core.settings.data})
+
         menu = pystray.Menu(
             pystray.MenuItem("Открыть Джарвиса", show, default=True),
             pystray.MenuItem("Слушать микрофон", toggle, checked=lambda i: core.settings["listening"]),
+            pystray.MenuItem("Запускать вместе с Windows", toggle_autostart,
+                             checked=lambda i: core.settings["autostart"]),
             pystray.MenuItem("Выход", lambda i, it: (i.stop(), os._exit(0))),
         )
         icon = pystray.Icon("Jarvis", img, "Джарвис", menu)
@@ -276,6 +311,12 @@ def main():
 
     def started():
         tray["icon"] = _tray(window, core)
+        threading.Thread(target=_set_window_icon, daemon=True).start()
+        if core.settings["autostart"]:
+            try:
+                set_autostart(True)  # обновить путь, если папку перенесли
+            except Exception:
+                pass
         core.start()
 
     webview.start(started, debug="--debug" in sys.argv, private_mode=False,
