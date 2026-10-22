@@ -25,6 +25,14 @@ def data_dir() -> Path:
 
 # Готовые провайдеры нейросетей. Все, кроме Claude, говорят на "OpenAI-совместимом" языке.
 PROVIDERS = {
+    "auto": {
+        "hint": "Джарвис сам переключается между всеми нейросетями, к которым есть ключ: кончился лимит у одной — "
+                "отвечает следующая. Ключи бесплатные, получите хотя бы 2–3. Последней всегда отвечает Ollama.",
+        "title": "⚡ Авто — много нейросетей по очереди (рекомендую)",
+        "base_url": "",
+        "models": [],
+        "key_url": "",
+    },
     "groq": {
         "hint": "Бесплатно: войдите через Google на console.groq.com → «Create API Key» → вставьте сюда. Этот же ключ даёт Джарвису отличный слух (Whisper).",
         "title": "Groq — бесплатно и очень быстро (рекомендую)",
@@ -53,6 +61,7 @@ PROVIDERS = {
         "models": ["google/gemini-3.8-flash", "openai/gpt-oss-120b", "anthropic/claude-haiku-5.5",
                    "deepseek/deepseek-v4.1-flash", "anthropic/claude-sonnet-5.5",
                    "nvidia/nemotron-3-super-120b-a12b:free", "google/gemma-4-31b-it:free"],
+        "dynamic": True,
         "key_url": "https://openrouter.ai/keys",
     },
     "ollama": {
@@ -61,6 +70,53 @@ PROVIDERS = {
         "base_url": "http://localhost:11434/v1",
         "models": ["qwen3:8b", "llama3.1:8b", "gpt-oss:20b"],
         "key_url": "https://ollama.com/download",
+    },
+    "cerebras": {
+        "hint": "Бесплатно: cloud.cerebras.ai → API Keys. Очень быстрые ответы.",
+        "title": "Cerebras — бесплатно, очень быстро",
+        "base_url": "https://api.cerebras.ai/v1",
+        "models": [],
+        "dynamic": True,
+        "key_url": "https://cloud.cerebras.ai/platform",
+    },
+    "mistral": {
+        "hint": "Бесплатно: console.mistral.ai → API Keys (бесплатный тариф «Experiment»).",
+        "title": "Mistral — бесплатный тариф",
+        "base_url": "https://api.mistral.ai/v1",
+        "models": ["mistral-medium-latest", "mistral-small-latest", "mistral-large-latest"],
+        "key_url": "https://console.mistral.ai/api-keys",
+    },
+    "github": {
+        "hint": "Бесплатно для аккаунта GitHub: Settings → Personal access tokens → Fine-grained → разрешение «Models: Read».",
+        "title": "GitHub Models — бесплатно с аккаунтом GitHub",
+        "base_url": "https://models.github.ai/inference",
+        "models": ["openai/gpt-4.1-mini", "openai/gpt-4.1"],
+        "dynamic": True,
+        "key_url": "https://github.com/settings/personal-access-tokens/new",
+    },
+    "sambanova": {
+        "hint": "Бесплатно: cloud.sambanova.ai → APIs → Create API key.",
+        "title": "SambaNova — бесплатно",
+        "base_url": "https://api.sambanova.ai/v1",
+        "models": [],
+        "dynamic": True,
+        "key_url": "https://cloud.sambanova.ai/apis",
+    },
+    "nvidia": {
+        "hint": "Бесплатно: build.nvidia.com → войти → API Keys → Generate.",
+        "title": "NVIDIA — бесплатные пробные запросы",
+        "base_url": "https://integrate.api.nvidia.com/v1",
+        "models": [],
+        "dynamic": True,
+        "key_url": "https://build.nvidia.com/settings/api-keys",
+    },
+    "huggingface": {
+        "hint": "Бесплатно: huggingface.co → Settings → Access Tokens → Create (тип Read).",
+        "title": "Hugging Face — бесплатный лимит каждый месяц",
+        "base_url": "https://router.huggingface.co/v1",
+        "models": [],
+        "dynamic": True,
+        "key_url": "https://huggingface.co/settings/tokens",
     },
     "custom": {
         "hint": "Адрес и ключ любого OpenAI-совместимого сервера.",
@@ -87,7 +143,8 @@ DEFAULTS = {
     "wake_words": ["джарвис", "jarvis", "джервис", "жарвис", "джарвиз", "джарвес", "дарвис", "джарвіс"],
     "require_wake_word": True,
     "follow_up_seconds": 8,
-    "llm": {"provider": "groq", "api_key": "", "model": "openai/gpt-oss-120b", "base_url": ""},
+    "llm": {"provider": "auto", "api_key": "", "model": "", "base_url": ""},
+    "keys": {},  # ключи всех сервисов для режима «Авто»
     "stt": {"provider": "auto", "device": None, "sensitivity": 60},
     "tts": {
         "provider": "edge",
@@ -128,6 +185,13 @@ class Settings:
                 self.data = _merge(DEFAULTS, json.loads(self.path.read_text("utf-8")))
             except Exception:
                 pass
+        # Ключ текущего сервиса и ключ слуха Groq — тоже в общий список для «Авто»
+        keys = self.data.setdefault("keys", {})
+        llm = self.data["llm"]
+        if llm.get("api_key") and llm.get("provider") not in ("auto", "custom", "ollama"):
+            keys.setdefault(llm["provider"], llm["api_key"])
+        if self.data["stt"].get("groq_key"):
+            keys.setdefault("groq", self.data["stt"]["groq_key"])
         # Старые неверные названия моделей OpenRouter из первых версий
         if self.data["llm"].get("model") in ("google/gemini-flash-latest", "anthropic/claude-haiku-5-5"):
             self.data["llm"]["model"] = "google/gemini-3.8-flash"
@@ -158,4 +222,5 @@ class Settings:
         """Ключ Groq нужен ещё и для распознавания речи через Whisper."""
         if self.data["llm"]["provider"] == "groq" and self.data["llm"]["api_key"]:
             return self.data["llm"]["api_key"]
-        return self.data["stt"].get("groq_key") or os.environ.get("GROQ_API_KEY", "")
+        return (self.data["stt"].get("groq_key") or self.data.get("keys", {}).get("groq")
+                or os.environ.get("GROQ_API_KEY", ""))

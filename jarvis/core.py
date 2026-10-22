@@ -283,7 +283,10 @@ class Core:
             msg = str(e)
             self.log(f"Нейросеть: {msg}", "error")
             self.notice("⚠ Нейросеть: " + msg[:160])
-            if "401" in msg or "invalid" in msg.lower() and "key" in msg.lower():
+            if type(e).__name__ == "NoBrains":
+                self.notice("🧠 " + msg)
+                self.say("Все нейросети сейчас недоступны, сэр. Добавьте ключи в настройках или запустите Ollama.")
+            elif "401" in msg or "invalid" in msg.lower() and "key" in msg.lower():
                 self.say("Ключ нейросети не подходит, сэр. Проверьте его в настройках.")
             elif "429" in msg or "rate limit" in msg.lower():
                 m = re.search(r"try again in ([\d.]+)(m?s)", msg)

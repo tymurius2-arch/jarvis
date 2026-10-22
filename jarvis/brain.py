@@ -25,6 +25,9 @@ class Brain:
         self.lock = threading.Lock()
         self._client = None
         self._client_sig = None
+        from .router import Router
+
+        self.router = Router(core)
 
     def reset(self):
         self.history = []
@@ -34,6 +37,8 @@ class Brain:
         return self.core.settings["llm"]
 
     def ready(self) -> bool:
+        if self.cfg.get("provider") == "auto":
+            return True  # в худшем случае ответит Ollama; если и её нет — скажем об этом
         return bool(self.cfg.get("api_key")) or self.cfg.get("provider") == "ollama"
 
     def _system(self):
@@ -76,7 +81,7 @@ class Brain:
 
     def ask(self, text: str) -> str:
         with self.lock:
-            client = self._get_client()
+            client = None if self.cfg["provider"] == "auto" else self._get_client()
             # Не даём истории разрастаться
             if len(self.history) > 16:
                 self.history = self.history[-10:]
@@ -101,14 +106,17 @@ class Brain:
         if self.cfg["provider"] in ("ollama", "custom"):
             extra["extra_body"] = {"think": False}  # Qwen3/DeepSeek: без долгих «размышлений»
         for _ in range(8):
-            resp = self._complete(client, model, tools, extra)
+            if client is None:  # режим «Авто»
+                resp, used = self.router.complete(self._system(), self.history, tools)
+            else:
+                resp, used = self._complete(client, model, tools, extra), self.cfg["provider"]
             msg = resp.choices[0].message
             if msg.content and "<think>" in msg.content:
                 import re as _re
 
                 msg.content = _re.sub(r"<think>.*?</think>", "", msg.content, flags=_re.S).strip()
             calls = msg.tool_calls or []
-            entry = {"role": "assistant", "content": msg.content or ""}
+            entry = {"role": "assistant", "content": msg.content or "", "_prov": used}
             if calls:
                 # Сохраняем вызовы целиком: Gemini кладёт туда «thought_signature»,
                 # без которой следующий запрос падает с ошибкой 400.
@@ -168,8 +176,11 @@ class Brain:
                 system_text = self._system()
                 if "qwen3" in m.lower() and self.cfg["provider"] in ("ollama", "custom"):
                     system_text += "\n/no_think"
+                from .router import prepare
+
                 resp = client.chat.completions.create(
-                    model=m, messages=[{"role": "system", "content": system_text}] + self.history,
+                    model=m, messages=[{"role": "system", "content": system_text}]
+                    + prepare(self.history, self.cfg["provider"]),
                     tools=tools, tool_choice="auto", temperature=0.6, max_tokens=1024, **kw)
                 if i:
                     self.core.notice(f"⏳ Модель {model} сейчас недоступна (лимит или перегрузка) — отвечаю через {m}",

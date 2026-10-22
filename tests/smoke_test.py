@@ -72,6 +72,56 @@ core.on_heard("Джарвиз, открой блокнот")
 assert events and events[-1].get("c") == "открой блокнот", events
 print("нечёткое слово-активатор: ок")
 
+# Режим «Авто»: переключение между нейросетями
+from types import SimpleNamespace as NS  # noqa: E402
+from jarvis.router import Router, classify, prepare  # noqa: E402
+
+
+class Err(Exception):
+    def __init__(self, code, msg):
+        super().__init__(msg)
+        self.status_code = code
+
+
+calls_log = []
+
+
+def fake_client(prov):
+    def create(model, messages, **kw):
+        calls_log.append((prov, model))
+        assert all("_prov" not in m for m in messages), "служебное поле ушло в нейросеть"
+        if prov == "gemini":
+            raise Err(429, "Rate limit reached. Please try again in 20s")
+        if prov == "groq" and model == "m1":
+            raise Err(503, "This model is currently experiencing high demand")
+        if prov == "cerebras":
+            raise Err(401, "Invalid API key")
+        return NS(choices=[NS(message=NS(content="Ок", tool_calls=None))])
+    return NS(chat=NS(completions=NS(create=create)))
+
+
+r = Router(core)
+r.slots = lambda: [("gemini", "g1"), ("cerebras", "c1"), ("cerebras", "c2"), ("groq", "m1"), ("groq", "m2"),
+                   ("ollama", "q")]
+r.models = lambda prov, key: {"cerebras": ["c1", "c2"]}.get(prov, [])
+r.client = fake_client
+resp, used = r.complete("sys", [{"role": "user", "content": "привет"}], [])
+assert used == "groq" and calls_log[-1] == ("groq", "m2"), calls_log
+calls_log.clear()
+resp, used = r.complete("sys", [{"role": "user", "content": "ещё"}], [])
+assert calls_log == [("groq", "m2")], calls_log  # отдыхающие и мёртвые слоты пропущены
+assert classify(Err(429, "try again in 7s"))[0] == "busy" and classify(Err(401, "bad key"))[0] == "auth"
+hist = [{"role": "user", "content": "погода"},
+        {"role": "assistant", "content": "", "_prov": "gemini", "tool_calls": [
+            {"id": "a1", "type": "function", "function": {"name": "get_weather", "arguments": "{}"},
+             "extra_content": {"google": {"thought_signature": "x"}}}]},
+        {"role": "tool", "tool_call_id": "a1", "content": "+5"}]
+flat = prepare(hist, "groq")
+assert flat[1]["role"] == "assistant" and "get_weather" in flat[1]["content"] and flat[2]["role"] == "user", flat
+same = prepare(hist, "gemini")
+assert same[1]["tool_calls"][0]["extra_content"] and "_prov" not in same[1]
+print("режим «Авто»: ок")
+
 # Джарвис не может сам выключить звук
 core.current_command = "расскажи анекдот"
 assert core.tools.call("mute", {"state": True}).startswith("Отказано")

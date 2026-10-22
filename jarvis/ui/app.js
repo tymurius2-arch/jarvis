@@ -80,7 +80,7 @@ function renderStatus() {
   if (!S) return;
   const p = S.providers[S.settings.llm.provider];
   const ai = $("#st-ai");
-  ai.textContent = S.ai_ready ? (S.settings.llm.model || p?.title).split("/").pop() : "нет ключа";
+  ai.textContent = S.settings.llm.provider === "auto" ? "Авто" : S.ai_ready ? (S.settings.llm.model || p?.title).split("/").pop() : "нет ключа";
   ai.className = S.ai_ready ? "ok" : "bad";
   const mic = $("#st-mic");
   mic.textContent = S.mic_error ? "ошибка" : (S.settings.listening ? "слушает" : "выключен");
@@ -344,8 +344,40 @@ function fillSettings() {
   $("#s-shell").checked = st.allow_shell; $("#s-confirm").checked = st.confirm_power;
   $("#s-autostart").checked = st.autostart; $("#s-tray").checked = st.minimize_to_tray;
 }
+const AUTO_ORDER = ["gemini", "groq", "cerebras", "openrouter", "mistral", "github", "sambanova", "nvidia", "huggingface"];
+function fillAutoKeys() {
+  const box = $("#s-auto-keys");
+  box.innerHTML = "";
+  const keys = S.settings.keys || {};
+  AUTO_ORDER.forEach((id) => {
+    const p = S.providers[id];
+    if (!p) return;
+    const row = el("div", "auto-row");
+    const name = el("span");
+    name.innerHTML = `${esc(p.title.split(" — ")[0])}<small>${esc(p.title.split(" — ")[1] || "")}</small>`;
+    const inp = document.createElement("input");
+    inp.type = "password";
+    inp.placeholder = "ключ";
+    inp.value = keys[id] || "";
+    inp.classList.toggle("has", !!inp.value);
+    inp.oninput = () => { inp.classList.toggle("has", !!inp.value.trim()); save({ keys: { [id]: inp.value.trim() } }); };
+    const get = el("button", "ghost small", "Получить");
+    get.title = p.hint || "";
+    get.onclick = () => api.open_link(p.key_url);
+    row.append(name, inp, get);
+    box.appendChild(row);
+  });
+  const ol = el("div", "auto-row");
+  ol.innerHTML = `<span>Ollama<small>без ключа, отвечает последней, если запущена</small></span><span class="muted">подключится сама</span>`;
+  box.appendChild(ol);
+}
 function fillModels() {
   const p = S.providers[$("#s-provider").value];
+  const auto = $("#s-provider").value === "auto";
+  $("#s-auto").classList.toggle("hidden", !auto);
+  $("#s-key-wrap").classList.toggle("hidden", auto);
+  $("#s-model-wrap").classList.toggle("hidden", auto);
+  if (auto) fillAutoKeys();
   $("#s-models").innerHTML = (p.models || []).map((m) => `<option value="${m}">`).join("");
   $("#s-base-wrap").classList.toggle("hidden", !["custom", "ollama"].includes($("#s-provider").value));
   $("#s-key-get").classList.toggle("hidden", !p.key_url);
@@ -368,6 +400,14 @@ bind("#s-provider", "change", () => {
 bind("#s-key", "input", () => save({ llm: { api_key: $("#s-key").value.trim() } }));
 bind("#s-model", "change", () => save({ llm: { model: $("#s-model").value.trim() } }));
 bind("#s-base", "change", () => save({ llm: { base_url: $("#s-base").value.trim() } }));
+bind("#s-auto-count", "click", async () => {
+  $("#s-auto-status").textContent = "Считаю…";
+  clearTimeout(saveTimer);
+  await api.save_settings({});
+  const r = await api.auto_status();
+  const parts = Object.entries(r.providers || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+  $("#s-auto-status").textContent = r.total ? `Всего нейросетей: ${r.total} (${parts})` : "Пока ни одной — добавьте ключи или запустите Ollama";
+});
 bind("#s-key-get", "click", () => api.open_link(S.providers[$("#s-provider").value].key_url));
 bind("#s-test-ai", "click", async () => {
   $("#s-ai-result").textContent = "Проверяю…";
@@ -490,11 +530,13 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#editor
 function mockApi() {
   const st = {
     settings: { user_title: "сэр", language: "ru", wake_words: ["джарвис", "jarvis"], require_wake_word: true, listening: true,
-      llm: { provider: "groq", api_key: "", model: "openai/gpt-oss-120b", base_url: "" },
+      llm: { provider: "auto", api_key: "", model: "", base_url: "" }, keys: { groq: "gsk_x" },
       stt: { provider: "auto", device: null, sensitivity: 60 },
       tts: { provider: "edge", voice: "ru-RU-DmitryNeural", rate: "+8%", pitch: "-4Hz", fx: true, volume: 100 },
       allow_shell: true, confirm_power: true, autostart: false, minimize_to_tray: true, first_run: true },
-    providers: { groq: { title: "Groq — бесплатно и очень быстро", models: ["openai/gpt-oss-120b"], key_url: "x" } },
+    providers: { auto: { title: "⚡ Авто — много нейросетей по очереди (рекомендую)", models: [], hint: "Джарвис сам переключается между нейросетями." },
+      gemini: { title: "Google Gemini — есть бесплатный лимит", models: [], key_url: "x" }, groq: { title: "Groq — бесплатно и очень быстро", models: ["openai/gpt-oss-120b"], key_url: "x" },
+      cerebras: { title: "Cerebras — бесплатно, очень быстро", models: [], key_url: "x" }, openrouter: { title: "OpenRouter — сотни моделей по одному ключу", models: [], key_url: "x" } },
     voices: [{ id: "ru-RU-DmitryNeural", title: "Дмитрий — русский" }],
     action_types: { say: "Сказать фразу", steam: "Запустить игру Steam", wait: "Пауза" },
     protocols: [{ id: "a", name: "Бимка", icon: "🚗", triggers: ["бимк", "beamng"], enabled: true, actions: [{ type: "say", value: "Запускаю BeamNG" }, { type: "steam", value: "284160" }] }],
@@ -502,7 +544,7 @@ function mockApi() {
   };
   const ok = async () => true;
   return new Proxy({ get_state: async () => st, steam_games: async () => [{ appid: 284160, name: "BeamNG.drive" }, { appid: 730, name: "Counter-Strike 2" }],
-    test_phrase: async () => "Бимка", save_settings: async () => st,
+    test_phrase: async () => "Бимка", save_settings: async () => st, auto_status: async () => ({ total: 27, providers: { Gemini: 3, Groq: 3, OpenRouter: 19, Ollama: 2 } }),
     send_text: async (t) => { jarvisEvent({ type: "chat", role: "user", text: t, time: "12:00" }); setTimeout(() => jarvisEvent({ type: "chat", role: "jarvis", text: "Будет сделано, сэр.", time: "12:00" }), 400); } },
     { get: (o, k) => o[k] || ok });
 }

@@ -121,14 +121,19 @@
       <div class="card">
         <h2>🧠 Нейросеть</h2>
         <label>Сервис<select id="s-provider"></select></label>
-        <label>Ключ (API key)
+        <label id="s-key-wrap">Ключ (API key)
           <div class="row"><input id="s-key" type="password" placeholder="Вставьте ключ сюда">
           <button class="ghost small" id="s-key-get">Получить ключ</button></div>
         </label>
-        <label>Модель<input id="s-model" list="s-models"><datalist id="s-models"></datalist></label>
+        <label id="s-model-wrap">Модель<input id="s-model" list="s-models"><datalist id="s-models"></datalist></label>
         <label id="s-base-wrap" class="hidden">Адрес сервера<input id="s-base" placeholder="http://localhost:1234/v1"></label>
         <div class="row"><button class="primary small" id="s-test-ai">Проверить связь</button><span id="s-ai-result" class="muted"></span></div>
         <p class="hint" id="s-ai-hint"></p>
+        <div id="s-auto" class="hidden">
+          <div id="s-auto-keys"></div>
+          <div class="row"><button class="ghost small" id="s-auto-count">Посчитать нейросети</button>
+            <span id="s-auto-status" class="muted"></span></div>
+        </div>
       </div>
 
       <div class="card">

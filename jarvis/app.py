@@ -75,6 +75,13 @@ class Api:
         threading.Thread(target=self._core.say, args=(text or "Добрый вечер, сэр. Все системы работают в штатном режиме.",),
                          daemon=True).start()
 
+    def auto_status(self):
+        """Сколько нейросетей в режиме «Авто» (нужен интернет — спрашивает каталоги сервисов)."""
+        try:
+            return self._core.brain.router.status()
+        except Exception as e:
+            return {"total": 0, "providers": {}, "error": str(e)}
+
     def test_ai(self):
         try:
             self._core.brain.reset()
